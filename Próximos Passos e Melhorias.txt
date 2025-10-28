@@ -1,0 +1,20 @@
+// Arquivo de Qualificação de Dados: Preciso que seja visível se todos os dados foram processados e quais hospitais ainda precisam de retificações ou correções;
+	Seria recomendável que o script repassasse a quantidade e a soma dos dados sempre, atualizando constantemente essas informações
+	A estrutura que pensei foi: arquivo | cnes | nome do hospital | competência | n° de linhas raw | n° de linhas base | n° de linhas erros | diferença linhas
+		soma dos dados raw | soma dos dados base | soma dos dados erros | diferença soma
+
+// Seria bom que eu tivesse um log com todas as mudanças que eu fizer. Por exemplo: Apareceu erro x -> Conversei com a Sara e ela falou pra eu mudar y pra z -> Dia 22/10 a Sara alterou y pra z
+
+// Com o script atual sozinho, a leitura dos arquivos so acontece numa formatação específica, seria bom eu acrescentar uma leitura semelhante ao aplicativo
+
+// Mudar o formato de atualizações - A base de dados de produção vai ficar na pasta "Base de Dados"
+
+// Documentar quais hospitais tem o quê, até pra melhorar a visualização nos BIs
+
+// Verificação dentro do script se os dados já foram processados anteriormente. 
+
+// Ver como vou fazer em situações de retificação
+
+// Acrescentar no script dentro do terminal quando um erro aparecer e o que vai ser feito e colocar numa doc que foi alterado e em outra doc a alteração
+
+// Fazer as divisoes especialidades medicas nao medicas

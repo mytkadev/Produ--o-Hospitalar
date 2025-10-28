@@ -1,0 +1,28 @@
+Análises (Pasta)
+Arquivos com análises feitas com os dados de Produção Hospitalar
+
+Backup (Pasta)
+Arquivos de backup
+
+Controle (Pasta)
+Planilhas criadas para controle de atualização e qualificação de dados
+ 	˫ Controle de Atualização | Planilha com os hospitais e os respectivos meses processados // Posteriormente .sql
+ 	˫ Qualificação de Dados | Planilha com controle de qualidade de dados (Checagem se os dados raw estão sendo completamente lidos e quais hospitais
+		tem erros pendentes)
+
+Documentações (Pasta)
+	1. Documentação do Projeto – Voltada ao entendimento geral e apresentação a outros setores, explicando o propósito, contexto e resultados.
+	2. Documentação de Atualização – Com passos e rotinas de manutenção, útil em casos de férias ou substituição de estagiário, garantindo continuidade do trabalho.
+	3. Documentação Técnica – Voltada a quem for dar suporte ou aprimorar o sistema, com detalhes de código, base de dados, estrutura e arquitetura técnica.
+
+Códigos (Pasta)
+Pasta com os códigos referentes ao projeto (Inclusive códigos antigos)
+
+Planilhas (Pasta)
+Pasta com as planilhas enviadas pelos hospitais
+	˫ A serem processadas | Planilhas que o hospital vai processar, renomear e mandar pras processadas
+	˫ Processadas | Planilhas que já foram processadas pelo script.
+
+Melhorias (Arquivo de Texto)
+Arquivo que tem como finalidade deixar registrados planos futuros pra ferramenta e melhorias sinalizadas
+
