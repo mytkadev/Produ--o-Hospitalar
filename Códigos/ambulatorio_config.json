@@ -57,18 +57,7 @@
     "Traumatologia",
     "Uroginecologia",
     "Urologia",
-    "Ginecologia",
-    "Nutricionista",
-    "Obtetrícia",
-    "Obstetrícia",
-    "Psiquiatra",
-    "Odontologia",
-    "Oncologia",
-    "Cirurgia Aparelho Digestivo",
-    "Ginecologia e Obstetrícia",
-    "fisioterapia",
-    "Cirurgia Cardiovascular",
-    "Acupuntura"
+    "Ginecologia"
   ],
   "termos_proibidos": [
     "AUXILIAR DE ENFERMAGEM",
@@ -78,30 +67,25 @@
   "substituicoes_especialidades": {
     "CLINICA GERAL": "Clínica Médica",
     "ENFERMAGEM": "Enfermeiro",
-    "GINECOLOGIA": "Ginecologia",
-    "NUTRICIONISTA": "Nutricionista",
-    "OBSTETRICIA": "Obtetrícia",
-    "ANESTESISTA": "Anestesiologia",
-    "ANESTESIA": "Anestesiologia",
-    "ANESTESISTAS": "Anestesiologia",
-    "ENFERMAGEM CLINICA": "Enfermeiro",
-    "CLÍNICA CIRÚRGICA": "Cirurgia Geral",
-    "CLINICA OBSTÉTRICA": "Obstetrícia",
-    "PSIQUITRIA INTERVENCIONISTA": "Psiquiatra",
-    "ENFERMAGEM NEONATOLÓICA": "Enfermeiro",
-    "ENFERMAGEM NEONATOLÓGICA": "Enfermeiro",
-    "ODONTOLOGIA": "Odontologia",
-    "ONCOLOGIA CLINICA": "Oncologia",
-    "C. MÉDICA": "Clínica Médica",
-    "CIR. APARELHO DIGESTIVO": "Cirurgia Aparelho Digestivo",
-    "CIRURGIÃO PLÁSTICO": "Cirurgia Plástica",
-    "CIRURGIÃO TORÁCICO": "Cirurgia Torácica",
-    "GINOECOLOGISTA OBSTETRA": "Ginecologia e Obstetrícia",
-    "UROLOGISTA": "Urologia",
-    "GINECO ( P.S. GO)": "Ginecologia",
-    "FISIOTERAPEUTA GERAL": "fisioterapia",
-    "CIRURGIA CARDIOVASCULAR": "Cirurgia Cardiovascular",
-    "ACUPUNTURA": "Acupuntura",
-    "GASTRO (INCLUI ALERGIA LEITE DE VACA) ALV": "Gastroenterologia"
+    "GINECOLOGIA": "Ginecologia"
+  },
+  "decisoes_especialidades": {
+    "2076896": {
+      "CLINICA GERAL": {
+        "acao": "M",
+        "destino": "Clínica Médica",
+        "motivo": "Nomenclatura diferente com mesmo sentido"
+      },
+      "ENFERMAGEM": {
+        "acao": "M",
+        "destino": "Enfermeiro",
+        "motivo": "Especialidade não médica – mapeada"
+      },
+      "GINECOLOGIA": {
+        "acao": "M",
+        "destino": "Ginecologia",
+        "motivo": "Ainda não registrado"
+      }
+    }
   }
 }

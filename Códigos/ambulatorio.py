@@ -41,7 +41,57 @@ from openpyxl import load_workbook                  # Leitura e escrita em arqui
 from fuzzywuzzy import process                      # Matching aproximado de texto (fuzzy matching)
 from datetime import datetime
 from dateutil.relativedelta import relativedelta    # Manipular datas relativas (ex: mês anterior)
+from openpyxl import Workbook
 
+# =========================
+# UI helpers (prompt/menus)
+# =========================
+def _line():
+    return "─" * 63
+
+def _hdr(t):
+    return f"┌{_line()}┐\n│ {t.ljust(61)}│\n└{_line()}┘"
+
+def _ask(msg):
+    return input(f"{msg.strip()} ").strip()
+
+def _pause():
+    input("\n(Pressione Enter para continuar...)")
+
+def _lista_paginada(opcoes, titulo="Lista", por_pagina=50):
+    """
+    Mostra itens numerados com paginação. Retorna o índice (0-based) escolhido,
+    ou -1 se o usuário digitar 0 para “digitar manualmente”.
+    """
+    if not opcoes:
+        print("Lista vazia.")
+        return -1
+    total = len(opcoes)
+    pagina = 0
+    while True:
+        ini = pagina * por_pagina
+        fim = min(ini + por_pagina, total)
+        print("\n" + _hdr(titulo))
+        print(" 0) Digitar manualmente")
+        for i, item in enumerate(opcoes[ini:fim], start=1):
+            print(f"{i}) {item}")
+        print(f"\nPágina {pagina+1}/{(total-1)//por_pagina+1}  (N=próx, P=ant, Q=sair)")
+        resp = _ask("Escolha um número, ou N/P/Q:").lower()
+        if resp == "q":
+            return -1
+        if resp == "n" and fim < total:
+            pagina += 1
+            continue
+        if resp == "p" and pagina > 0:
+            pagina -= 1
+            continue
+        if resp.isdigit():
+            n = int(resp)
+            if n == 0:
+                return -1
+            if 1 <= n <= (fim - ini):
+                return ini + (n - 1)
+        print("Opção inválida.")
 
 # ===============================================================
 # CONFIGURAÇÕES GERAIS E PARÂMETROS
@@ -59,10 +109,17 @@ os.makedirs(CONTROLE_DIR, exist_ok=True)
 # Arquivos do Controle
 CAMINHO_CONTROLE_MUDANCAS = os.path.join(CONTROLE_DIR, "Controle de Mudanças.xlsx")
 CAMINHO_QUALIFICACAO_DADOS = os.path.join(CONTROLE_DIR, "Qualificação de Dados.xlsx")
+CAMINHO_CONTROLE_REGISTROS = os.path.join(CONTROLE_DIR, "Controle de Registros.xlsx")  # <- NOVO
+
 # Decisões por hospital+termo (persistidas em JSON)
 # Formato: { cnes_str: { TERMO_UP: {"acao": "M"|"L", "destino": str|None, "motivo": str|None} } }
 decisoes_especialidades = {}
 
+CAMINHO_TEMPLATE_CONTROLE_REM = os.path.join(CONTROLE_DIR, "Controle de Atualização do REM.xlsx")
+CAMINHO_CONTROLE_PRODUCAO    = os.path.join(CONTROLE_DIR, "Controle de Atualização de Produção.xlsx")
+
+# Aba onde vamos registrar o status de processamento do Ambulatorial
+ABA_STATUS_AMB = "Ambulatorial – Status (Automático)"
 
 # Pastas de planilhas
 PLANILHAS_DIR = os.path.join(PRODUCAO_DIR, "Planilhas")
@@ -172,9 +229,109 @@ substituicoes_especialidades = {
 ULTIMA_RESOLUCAO_TEXTO = None   # preenchida quando usuário escolhe correção manual (M)
 ULTIMO_MOTIVO_ERRO = None       # preenchida quando usuário escolhe mandar pro log (L)
 
+def _criar_controle_producao_vazio():
+    """Cria um arquivo do zero com a aba de status se o template não existir."""
+    cols = [
+        "Data_Registro", "CNES", "Hospital", "Competencia",
+        "Arquivo", "Linhas_RAW", "Linhas_Base", "Linhas_Erros", "Status"
+    ]
+    df_vazio = pd.DataFrame(columns=cols)
+    with pd.ExcelWriter(CAMINHO_CONTROLE_PRODUCAO, engine="openpyxl", mode="w") as w:
+        df_vazio.to_excel(w, sheet_name=ABA_STATUS_AMB, index=False)
+    print(f"📄 Criado '{CAMINHO_CONTROLE_PRODUCAO}' com a aba '{ABA_STATUS_AMB}'.")
+
+def garantir_controle_producao():
+    """
+    Garante que o arquivo 'Controle de Atualização de Produção.xlsx' exista.
+    Se houver o template 'Controle de Atualização do REM.xlsx', copia o template
+    para manter o mesmo formato (abas, estilos etc.) e depois cria/atualiza a
+    aba 'Ambulatorial – Status (Automático)'.
+    """
+    os.makedirs(CONTROLE_DIR, exist_ok=True)
+
+    if not os.path.exists(CAMINHO_CONTROLE_PRODUCAO):
+        if os.path.exists(CAMINHO_TEMPLATE_CONTROLE_REM):
+            # Copia o modelo para manter o "mesmo formato"
+            shutil.copy2(CAMINHO_TEMPLATE_CONTROLE_REM, CAMINHO_CONTROLE_PRODUCAO)
+            print(f"📎 Copiado template → '{CAMINHO_CONTROLE_PRODUCAO}'.")
+            # Garante a aba de status (sem apagar nada do template)
+            try:
+                # Se a aba já existir no template, não recriamos
+                pd.read_excel(CAMINHO_CONTROLE_PRODUCAO, sheet_name=ABA_STATUS_AMB, engine="openpyxl")
+            except Exception:
+                _criar_controle_producao_vazio()
+        else:
+            # Sem template: cria um arquivo novo e limpo
+            _criar_controle_producao_vazio()
+
 # ===============================================================
 # FUNÇÕES AUXILIARES GERAIS
 # ===============================================================
+
+def registrar_status_ambulatorio_no_controle_producao(cnes: str,
+                                                      nome_hospital: str,
+                                                      competencias_str: str,
+                                                      arquivo: str,
+                                                      linhas_raw: int,
+                                                      linhas_base: int,
+                                                      linhas_erros: int,
+                                                      status: str):
+    """
+    Adiciona/atualiza o status na aba 'Ambulatorial – Status (Automático)' do
+    arquivo 'Controle de Atualização de Produção.xlsx'. Dedup por (CNES, Competencia).
+    """
+    garantir_controle_producao()
+
+    try:
+        try:
+            df_exist = pd.read_excel(CAMINHO_CONTROLE_PRODUCAO, sheet_name=ABA_STATUS_AMB, engine="openpyxl")
+        except ValueError:
+            df_exist = pd.DataFrame()
+        except FileNotFoundError:
+            df_exist = pd.DataFrame()
+
+        competencias = [c.strip() for c in str(competencias_str).split(";") if c.strip()]
+        agora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+        rows = []
+        for comp in competencias:
+            rows.append({
+                "Data_Registro": agora,
+                "CNES": str(cnes).strip(),
+                "Hospital": str(nome_hospital).strip(),
+                "Competencia": comp,
+                "Arquivo": arquivo,
+                "Linhas_RAW": linhas_raw,
+                "Linhas_Base": linhas_base,
+                "Linhas_Erros": linhas_erros,
+                "Status": status
+            })
+        df_new = pd.DataFrame(rows)
+
+        # Dedup por (CNES, Competencia) — remove antigos e mantém os novos
+        if not df_exist.empty and all(col in df_exist.columns for col in ["CNES", "Competencia"]):
+            chave = ["CNES", "Competencia"]
+            # Normalizar CNES como texto antes da comparação
+            df_exist["CNES"] = df_exist["CNES"].astype(str).str.strip()
+            df_new["CNES"] = df_new["CNES"].astype(str).str.strip()
+
+            mask = df_exist.merge(
+                df_new[chave].drop_duplicates(),
+                on=chave,
+                how="left",
+                indicator=True
+            )["_merge"] == "both"
+            df_exist = df_exist[~mask]
+
+        df_out = pd.concat([df_exist, df_new], ignore_index=True)
+
+        with pd.ExcelWriter(CAMINHO_CONTROLE_PRODUCAO, engine="openpyxl", mode="a", if_sheet_exists="replace") as w:
+            df_out.to_excel(w, sheet_name=ABA_STATUS_AMB, index=False)
+
+        print(f"🗂️ Controle atualizado em '{CAMINHO_CONTROLE_PRODUCAO}' (aba '{ABA_STATUS_AMB}').")
+    except Exception as e:
+        print(f"❌ Erro ao atualizar controle de produção: {e}")
+
 def _get_decisao(cnes: str, termo_up: str):
     cnes = str(cnes).strip()
     termo_up = str(termo_up).strip().upper()
@@ -217,9 +374,6 @@ def carregar_config():
             print("ℹ️ Nenhum config JSON encontrado; usando valores padrão.")
     except Exception as e:
         print(f"❌ Erro ao carregar config: {e}")
-
-
-
 
 def wizard_editar_config_interativo():
     """
@@ -307,7 +461,6 @@ def salvar_config():
     except Exception as e:
         print(f"❌ Erro ao salvar config: {e}")
 
-
 def normalizar(texto):
     """
     Remove acentos e transforma em minúsculas para facilitar comparações.
@@ -324,6 +477,229 @@ def mes_para_numero(mes_extenso):
         "julho": "07", "agosto": "08", "setembro": "09", "outubro": "10", "novembro": "11", "dezembro": "12"
     }
     return meses.get(mes_extenso.strip().lower())
+
+def _prompt_menu(titulo: str, opcoes: list[tuple[str, str]], allow_empty: bool=False) -> str:
+    """
+    Exibe um menu simples:
+      - opcoes: lista de pares (tecla, rótulo)
+      - retorna a tecla escolhida, já normalizada (minúscula)
+    """
+    print("\n" + titulo.strip())
+    for k, label in opcoes:
+        print(f"  [{k}] {label}")
+    while True:
+        esc = input("→ Sua escolha: ").strip().lower()
+        if allow_empty and esc == "":
+            return ""
+        if any(esc == k.lower() for k, _ in opcoes):
+            return esc
+        print("❌ Opção inválida. Tente novamente.")
+
+def _escolher_da_lista_numerada(titulo: str, itens: list[str]) -> str | None:
+    """
+    Mostra itens numerados (1..N). Retorna o item escolhido.
+    Retorna None se o usuário escolher '0' para informar manualmente.
+    """
+    print("\n" + titulo.strip())
+    for i, it in enumerate(itens, start=1):
+        print(f"  {i:>2}. {it}")
+    print("  0. Digitar manualmente")
+
+    while True:
+        raw = input("→ Número (ou 0 para digitar): ").strip()
+        if raw.isdigit():
+            n = int(raw)
+            if n == 0:
+                return None
+            if 1 <= n <= len(itens):
+                return itens[n-1]
+        print("❌ Entrada inválida. Informe um número listado.")
+
+# ===============================================================
+# UI: cores ANSI simples (funcionam no PowerShell moderno)
+# ===============================================================
+def _ansi(s, code):
+    try:
+        return f"\033[{code}m{s}\033[0m"
+    except:
+        return s
+
+def _title(s):   return _ansi(s, "1;36")   # bold + ciano
+def _ok(s):      return _ansi(s, "1;32")   # bold + verde
+def _warn(s):    return _ansi(s, "1;33")   # bold + amarelo
+def _err(s):     return _ansi(s, "1;31")   # bold + vermelho
+def _muted(s):   return _ansi(s, "2;37")   # cinza
+
+# ===============================================================
+# Fluxos de ação do menu
+# ===============================================================
+def executar_retificacao():
+    """Opção 1: Reprocessa o log e tenta inserir o que for corrigível, em seguida atualiza o controle."""
+    print(_title("\n▶ Retificação de dados pendentes"))
+    processar_log_de_erros()
+    atualizar_aba_controle()
+    print(_ok("✔ Retificação concluída.\n"))
+    input(_muted("Pressione Enter para voltar ao menu... "))
+
+def executar_processamento():
+    """Opção 2: Processa planilhas novas com todo o pipeline já existente."""
+    print(_title("\n▶ Processamento de planilhas novas"))
+    df_dados, arquivos_lidos, linhas_invalidas, consultorios_extraidos, erros_consultorios = ler_planilhas_ambulatorio()
+
+    if df_dados.empty:
+        print(_warn("Nenhum dado válido encontrado nas planilhas."))
+    else:
+        df_base = carregar_base_existente()
+        df_para_inserir = remover_duplicatas(df_dados, df_base)
+        inserir_novos_dados(df_para_inserir)
+
+    registrar_erros_ambulatorio(linhas_invalidas)
+    processar_log_de_erros()
+    atualizar_aba_controle()
+
+    if arquivos_lidos:
+        mover_arquivos_processados(arquivos_lidos)
+
+    # Inserção de consultórios (aba db_ambulatorio2)
+    if consultorios_extraidos:
+        df_cons = pd.DataFrame(consultorios_extraidos)
+        if not df_cons.empty:
+            inserir_consultorios(df_cons)
+            # Erros de consultórios
+            if erros_consultorios:
+                registrar_erros_consultorios(erros_consultorios)
+
+    print(_ok("✔ Processamento concluído.\n"))
+    input(_muted("Pressione Enter para voltar ao menu... "))
+
+def executar_edicao_parametrizacoes():
+    """Opção 3: Abre o wizard para editar listas/configurações persistidas no JSON."""
+    print(_title("\n▶ Edição de parametrizações (listas)"))
+    wizard_editar_config_interativo()
+    print(_ok("✔ Parametrizações atualizadas.\n"))
+    input(_muted("Pressione Enter para voltar ao menu... "))
+
+def wizard_renomear_na_base():
+    """
+    Opção 4: Renomeia valores/nomenclaturas diretamente na base (aba db_ambulatorio).
+    Permite escolher a coluna e fazer find→replace com confirmação.
+    """
+    print(_title("\n▶ Alterar valores/nomenclaturas na base (db_ambulatorio)"))
+
+    # Carrega base
+    try:
+        df = pd.read_excel(CAMINHO_BASE, sheet_name=NOME_ABA, engine="openpyxl")
+    except FileNotFoundError:
+        print(_err("Base não encontrada. Execute um processamento primeiro para criar a base."))
+        input(_muted("Pressione Enter para voltar ao menu... "))
+        return
+    except Exception as e:
+        print(_err(f"Erro ao ler a base: {e}"))
+        input(_muted("Pressione Enter para voltar ao menu... "))
+        return
+
+    cols = list(df.columns)
+    print("Colunas disponíveis:")
+    for i, c in enumerate(cols, start=1):
+        print(f"  [{i}] {c}")
+
+    # Escolhe coluna
+    while True:
+        try:
+            idx = int(input("\nInforme o número da coluna onde deseja renomear (ex.: 4): ").strip())
+            if 1 <= idx <= len(cols):
+                coluna = cols[idx-1]
+                break
+        except:
+            pass
+        print(_warn("Entrada inválida."))
+
+    termo_de = input(f"Valor atual a localizar em '{coluna}': ").strip()
+    if not termo_de:
+        print(_warn("Operação cancelada (valor de origem vazio)."))
+        input(_muted("Pressione Enter para voltar ao menu... "))
+        return
+
+    termo_para = input(f"Novo valor que substituirá '{termo_de}': ").strip()
+    if not termo_para:
+        print(_warn("Operação cancelada (valor de destino vazio)."))
+        input(_muted("Pressione Enter para voltar ao menu... "))
+        return
+
+    # Prévia
+    mask = df[coluna].astype(str) == termo_de
+    qtd = int(mask.sum())
+    if qtd == 0:
+        print(_warn(f"Nenhuma ocorrência de '{termo_de}' encontrada na coluna '{coluna}'."))
+        input(_muted("Pressione Enter para voltar ao menu... "))
+        return
+
+    print(_muted(f"\nPrévia: {qtd} linha(s) serão alteradas em '{coluna}'."))
+    confirma = input("Confirmar renomeação? [S/N]: ").strip().lower()
+    if confirma != "s":
+        print(_warn("Operação cancelada pelo usuário."))
+        input(_muted("Pressione Enter para voltar ao menu... "))
+        return
+
+    # Aplica e salva
+    df.loc[mask, coluna] = termo_para
+    try:
+        with pd.ExcelWriter(CAMINHO_BASE, engine="openpyxl", mode="a", if_sheet_exists="replace") as w:
+            df.to_excel(w, sheet_name=NOME_ABA, index=False)
+        print(_ok(f"✔ Renomeadas {qtd} ocorrência(s) em '{coluna}'."))
+    except Exception as e:
+        print(_err(f"Erro ao salvar alterações: {e}"))
+
+    input(_muted("Pressione Enter para voltar ao menu... "))
+
+def menu_principal():
+    """
+    Mostra o menu inicial com experiência visual aprimorada.
+    Apenas a opção 2 está ativa no momento.
+    """
+    while True:
+        os.system("cls" if os.name == "nt" else "clear")
+        print(
+            _title("┌───────────────────────────────────────────────────────────────┐\n") +
+            _title("│  Processador de Produção Hospitalar – Menu Principal          │\n") +
+            _title("└───────────────────────────────────────────────────────────────┘")
+        )
+        print("👋 Seja bem-vinda(o) ao programa de processamento de dados de Produção Hospitalar.")
+        print("Escolha uma ação:\n")
+        print("  [1] Retificar dados pendentes (em breve)")
+        print("  [2] Processar planilhas de 'A serem processadas'")
+        print("  [3] Alterar parametrizações (em breve)")
+        print("  [4] Alterar valores/nomenclaturas na base de dados (em breve)")
+        print("  [0] Sair\n")
+
+        escolha = input("👉  Digite o número da opção e pressione Enter: ").strip()
+
+        # Entrada inválida (vazio, letra, símbolo, etc.)
+        if not escolha.isdigit():
+            print(_err("\n❌ Funcionalidade não encontrada."))
+            input(_muted("Pressione Enter para voltar ao menu... "))
+            continue
+
+        # Processamento
+        if escolha == "2":
+            executar_processamento()
+            input(_muted("\nPressione Enter para voltar ao menu... "))
+            continue
+
+        # Sair
+        if escolha == "0":
+            print(_muted("\nEncerrando. Até breve!"))
+            break
+
+        # Demais opções ainda não implementadas
+        if escolha in {"1", "3", "4"}:
+            print(_warn("\n🚧 Essa funcionalidade ainda não está disponível."))
+            input(_muted("Pressione Enter para voltar ao menu... "))
+            continue
+
+        # Qualquer número fora das opções
+        print(_err("\n❌ Funcionalidade não encontrada."))
+        input(_muted("Pressione Enter para voltar ao menu... "))
 
 # ===============================================================
 # FUNÇÕES DE EXTRAÇÃO E REGISTRO DE CONSULTÓRIOS (aba db_ambulatorio2)
@@ -479,13 +855,22 @@ def extrair_nome_hospital_e_competencia(nome_arquivo):
     return None, None
 
 def resolver_especialidade_nao_reconhecida(especialidade_original: str, cnes: str):
-    """Pergunta L/M, memoriza por (cnes, termo) e aplica automaticamente nas próximas."""
+    """
+    Mostra um menu visual e:
+      1) Envia ao log com um MOTIVO padronizado (ou “outros” com input), OU
+      2) Permite MODIFICAR e inserir na base:
+         a) digitando a especialidade, OU
+         b) escolhendo da lista de especialidades.
+    Também memoriza a decisão para (CNES, termo) via _set_decisao.
+    Retorna o destino (string) se for para base, ou None se for para log.
+    Define ULTIMA_RESOLUCAO_TEXTO / ULTIMO_MOTIVO_ERRO.
+    """
     global ULTIMO_MOTIVO_ERRO, ULTIMA_RESOLUCAO_TEXTO
 
     termo = str(especialidade_original).strip()
     termo_up = termo.upper()
 
-    # 0) Já existe decisão memorizada?
+    # Se já houver decisão memorizada p/ este hospital + termo, aplica:
     dec = _get_decisao(cnes, termo_up)
     if dec:
         if dec["acao"] == "M" and dec.get("destino"):
@@ -495,50 +880,116 @@ def resolver_especialidade_nao_reconhecida(especialidade_original: str, cnes: st
             ULTIMO_MOTIVO_ERRO = dec.get("motivo") or "Especialidade não reconhecida (decisão memorizada)"
             return None
 
-    # 1) Perguntar obrigatoriamente L/M
-    print(f"\n⚠️ Especialidade não reconhecida: '{termo}'")
+    # Menu principal
+    print()
+    print(_hdr("Especialidade não encontrada"))
+    print(f"Entrada: {termo}")
+    print("\nO que deseja fazer?\n")
+    print("  [1] Enviar para o LOG")
+    print("  [2] Modificar e inserir na base\n")
+
     while True:
-        escolha = input("Digite [L] para logar ou [M] para mapear: ").strip().lower()
-        if escolha in ("l", "m"):
+        escolha = _ask("Digite 1 ou 2: ")
+        if escolha in ("1", "2"):
             break
-        print("Entrada inválida. Responda apenas 'L' ou 'M'.")
+        print("Opção inválida.")
 
-    if escolha == "m":
-        # Destino padronizado (obrigatório)
-        destino = ""
+    if escolha == "1":
+        # Submenu de MOTIVOS:
+        print("\nMotivo do LOG:")
+        print("  [a] Perguntar para Sara")
+        print("  [b] Rever nos registros anteriores")
+        print("  [c] Pedir ao hospital para retificar")
+        print("  [d] Outros")
+        while True:
+            m = _ask("Escolha (a/b/c/d): ").lower()
+            if m in ("a", "b", "c", "d"):
+                break
+            print("Opção inválida.")
+        if m == "a":
+            motivo = "Perguntar para Sara"
+        elif m == "b":
+            motivo = "Rever nos registros anteriores"
+        elif m == "c":
+            motivo = "Solicitar retificação ao hospital"
+        else:
+            motivo = _ask("Digite o motivo: ")
+            if not motivo:
+                motivo = "Outros (sem detalhamento)"
+
+        ULTIMO_MOTIVO_ERRO = motivo
+        ULTIMA_RESOLUCAO_TEXTO = None
+
+        # memoriza decisão “L”
+        _set_decisao(cnes, termo_up, "L", None, motivo)
+        return None
+
+    # escolha == "2"  → modificar e inserir
+    print("\nComo deseja modificar?")
+    print("  [a] Digitar a especialidade padronizada")
+    print("  [b] Buscar na lista de especialidades")
+    while True:
+        sub = _ask("Escolha (a/b): ").lower()
+        if sub in ("a", "b"):
+            break
+        print("Opção inválida.")
+
+    if sub == "a":
+        destino = _ask("Digite a especialidade padronizada: ")
         while not destino.strip():
-            destino = input("Digite o nome padronizado para esta especialidade: ").strip()
-            if not destino:
-                print("Destino não pode ser vazio.")
+            destino = _ask("Valor vazio. Digite a especialidade padronizada: ")
+    else:
+        idx = _lista_paginada(lista_especialidades_ambulatorio, "Especialidades – escolha um destino", por_pagina=50)
 
-        # Texto da resolução (obrigatório)
-        ULTIMA_RESOLUCAO_TEXTO = ""
-        while not ULTIMA_RESOLUCAO_TEXTO.strip():
-            ULTIMA_RESOLUCAO_TEXTO = input("Qual foi a resolução? ").strip()
-            if not ULTIMA_RESOLUCAO_TEXTO:
-                print("Resolução não pode ser vazia.")
+        if idx == -1:
+            destino = _ask("Digite a especialidade padronizada: ")
+            while not destino.strip():
+                destino = _ask("Valor vazio. Digite a especialidade padronizada: ")
+        else:
+            destino = lista_especialidades_ambulatorio[idx]
 
-        # Atualiza estruturas e persiste
-        substituicoes_especialidades[termo_up] = destino
-        if destino not in lista_especialidades_ambulatorio:
-            lista_especialidades_ambulatorio.append(destino)
-        salvar_config()
+    # “Qual foi a resolução?” (categorias)
+    print("\nQual foi a resolução?")
+    print("  [a] Especialidade não médica que agora é mapeada")
+    print("  [b] Erro gramatical")
+    print("  [c] Nomenclatura diferente com mesmo sentido")
+    print("  [d] Sinalizou setor e não especialidade; ajustado")
+    print("  [e] Ainda não registrado")
+    print("  [f] Nomenclatura mais detalhada que o necessário")
+    print("  [g] Outros")
+    while True:
+        r = _ask("Escolha (a/b/c/d/e/f/g): ").lower()
+        if r in list("abcdefg"):
+            break
+        print("Opção inválida.")
 
-        # Memoriza decisão por hospital+termo
-        _set_decisao(cnes, termo_up, "M", destino, ULTIMA_RESOLUCAO_TEXTO)
-        print(f"✔️ Mapeado '{termo}' → '{destino}'. (memorizado para CNES {cnes})")
-        return destino
+    if   r == "a": resol = "Especialidade não médica – mapeada"
+    elif r == "b": resol = "Erro gramatical"
+    elif r == "c": resol = "Nomenclatura diferente com mesmo sentido"
+    elif r == "d": resol = "Indicou setor; ajustado para especialidade"
+    elif r == "e": resol = "Ainda não registrado"
+    elif r == "f": resol = "Nomenclatura mais detalhada que o necessário"
+    else:
+        resol = _ask("Descreva a resolução: ")
+        if not resol:
+            resol = "Outros (sem detalhamento)"
 
-    # escolha == "l"
-    ULTIMO_MOTIVO_ERRO = ""
-    while not ULTIMO_MOTIVO_ERRO.strip():
-        ULTIMO_MOTIVO_ERRO = input("Qual foi o motivo do log? ").strip()
-        if not ULTIMO_MOTIVO_ERRO:
-            print("Motivo não pode ser vazio.")
+    # Atualiza estruturas:
+    ULTIMA_RESOLUCAO_TEXTO = resol
+    ULTIMO_MOTIVO_ERRO = None
 
-    _set_decisao(cnes, termo_up, "L", None, ULTIMO_MOTIVO_ERRO)
-    print(f"📝 Decisão 'L' memorizada para '{termo}' (CNES {cnes}).")
-    return None
+    # guarda substituição global (em UPPER como chave de origem)
+    substituicoes_especialidades[termo_up] = destino
+    if destino not in lista_especialidades_ambulatorio:
+        lista_especialidades_ambulatorio.append(destino)
+    salvar_config()
+
+    # memoriza decisão por hospital+termo
+    _set_decisao(cnes, termo_up, "M", destino, resol)
+
+    print(f"\n✔️ Mapeado '{termo}' → '{destino}'.")
+    return destino
+
 
 def padronizar_especialidade(especialidade_original, cnes: str):
     """
@@ -860,7 +1311,26 @@ def ler_planilhas_ambulatorio():
                 "soma dos dados erros": soma_erros,
                 "diferença soma": diff_soma
             })
+            
+            status = "OK"
+            if linhas_erros > 0 and linhas_base > 0:
+                status = "Com Erros"
+            elif linhas_base == 0 and linhas_erros > 0:
+                status = "Somente Erros"
+            elif linhas_base == 0 and linhas_erros == 0:
+                status = "Sem Dados"
 
+            # 👉 Escreve no novo arquivo "Controle de Atualização de Produção.xlsx"
+            registrar_status_ambulatorio_no_controle_producao(
+                cnes=cnes,
+                nome_hospital=nome_hospital,
+                competencias_str=competencia_resumo,  # ex.: '2025-01;2025-02'
+                arquivo=arquivo,
+                linhas_raw=linhas_raw,
+                linhas_base=linhas_base,
+                linhas_erros=linhas_erros,
+                status=status
+            )
 
             # 👇 estes blocos rodam UMA VEZ por arquivo (fora do for)
             qtd_consultorios = extrair_consultorios(df)
@@ -1016,50 +1486,61 @@ def registrar_erros_ambulatorio(linhas_invalidas):
     # ✅ Espelhar no arquivo de logs central
     try:
         if os.path.exists(CAMINHO_LOGS):
-            mode = "a"
+            # Atualiza preservando outras abas
             df_log_existente2 = pd.read_excel(CAMINHO_LOGS, sheet_name="ambulatorio_log", engine="openpyxl")
+            df_completo2 = pd.concat([df_log_existente2, df_novos_logs], ignore_index=True)
+
+            with pd.ExcelWriter(CAMINHO_LOGS, engine="openpyxl",
+                                mode="a", if_sheet_exists="replace") as writer:
+                df_completo2.to_excel(writer, sheet_name="ambulatorio_log", index=False)
+
         else:
-            mode = "w"
-            df_log_existente2 = pd.DataFrame()
+            # Cria o arquivo do zero
+            df_completo2 = pd.DataFrame(df_novos_logs)
 
-        df_completo2 = pd.concat([df_log_existente2, df_novos_logs], ignore_index=True)
+            with pd.ExcelWriter(CAMINHO_LOGS, engine="openpyxl",
+                                mode="w") as writer:
+                df_completo2.to_excel(writer, sheet_name="ambulatorio_log", index=False)
 
-        with pd.ExcelWriter(CAMINHO_LOGS, engine="openpyxl", mode=mode, if_sheet_exists="replace") as writer:
-            df_completo2.to_excel(writer, sheet_name="ambulatorio_log", index=False)
 
         print("📚 Log espelhado em 'base_logs.xlsx'.")
     except Exception as e:
         print(f"❌ Erro ao espelhar log em CAMINHO_LOGS: {e}")
 
-
 def registrar_resolucao_registro(registro: dict):
     """
-    Adiciona um registro na aba 'registros' do CAMINHO_BASE (apenas 1 vez).
+    Salva SOMENTE em:
+      Controle/Controle de Registros.xlsx → aba: 'Registros'
     """
     try:
+        os.makedirs(CONTROLE_DIR, exist_ok=True)
+
+        sheet = "Registros"
+
+        # Lê o que já existe (se existir)
         try:
-            df_exist = pd.read_excel(CAMINHO_BASE, sheet_name="registros", engine="openpyxl")
+            df_exist = pd.read_excel(CAMINHO_CONTROLE_REGISTROS, sheet_name=sheet, engine="openpyxl")
         except FileNotFoundError:
             df_exist = pd.DataFrame()
-        except Exception as e:
-            print(f"⚠️ Não foi possível ler a aba 'registros' (será recriada): {e}")
+        except Exception:
             df_exist = pd.DataFrame()
 
         df_new = pd.DataFrame([registro])
         df_out = pd.concat([df_exist, df_new], ignore_index=True)
 
-        if not os.path.exists(CAMINHO_BASE):
-            os.makedirs(os.path.dirname(CAMINHO_BASE), exist_ok=True)
-            mode = "w"
+        if os.path.exists(CAMINHO_CONTROLE_REGISTROS):
+            with pd.ExcelWriter(CAMINHO_CONTROLE_REGISTROS, engine="openpyxl",
+                                mode="a", if_sheet_exists="replace") as writer:
+                df_out.to_excel(writer, sheet_name=sheet, index=False)
         else:
-            mode = "a"
+            with pd.ExcelWriter(CAMINHO_CONTROLE_REGISTROS, engine="openpyxl",
+                                mode="w") as writer:
+                df_out.to_excel(writer, sheet_name=sheet, index=False)
 
-        with pd.ExcelWriter(CAMINHO_BASE, engine="openpyxl", mode=mode, if_sheet_exists="replace") as writer:
-            df_out.to_excel(writer, sheet_name="registros", index=False)
-
-        print("📝 Registro salvo na aba 'registros'.")
+        print("📝 Registro salvo em 'Controle de Registros.xlsx' → aba 'Registros'.")
     except Exception as e:
-        print(f"❌ Erro ao salvar em 'registros': {e}")
+        print(f"❌ Erro ao salvar em 'Controle de Registros.xlsx': {e}")
+
 
 def registrar_controle_especialidade(registro: dict):
     """
@@ -1129,6 +1610,10 @@ def registrar_controle_resumo(resumo: dict):
 
         # Se já houver linha desse arquivo+competência, substitui (mantém 1 por par)
         chave = ["arquivo", "competencia"]
+        # Normalizar CNES e Competência para garantir merge correto
+        df_exist["cnes"] = df_exist["cnes"].astype(str).str.strip()
+        resumo["cnes"] = str(resumo["cnes"]).strip()
+
         if not df_exist.empty and all(c in df_exist.columns for c in chave):
             mask_dup = (df_exist["arquivo"] == resumo["arquivo"]) & (df_exist["competencia"] == resumo["competencia"])
             df_exist = df_exist[~mask_dup]
@@ -1221,37 +1706,18 @@ def atualizar_aba_controle():
 # ===============================================================
 # EXECUÇÃO PRINCIPAL DO SCRIPT
 # ===============================================================
-
-# ===============================================================
-# EXECUÇÃO PRINCIPAL DO SCRIPT
-# ===============================================================
-
-if __name__ == "__main__":
-    # --- CLI / argparse ---
-    parser = argparse.ArgumentParser(description="Processa planilhas de Ambulatório.")
-    parser.add_argument("--config", type=str, default=CONFIG_PATH, help="Caminho do arquivo de configuração JSON.")
-    parser.add_argument("--editar-config", action="store_true", help="Abre assistente interativo para editar listas e substituições antes do processamento.")
-    args = parser.parse_args()
-
-    # Ajusta caminho do config (se passado) e carrega
-    CONFIG_PATH = args.config
-    carregar_config()
-
-    # Se pedido, abre o assistente de edição
-    if args.editar_config:
-        wizard_editar_config_interativo()
-
-    # ==========================================================
-    # FLUXO PRINCIPAL DE EXECUÇÃO
-    # ==========================================================
-
+def executar_processamento():
+    """
+    Executa o pipeline padrão: lê planilhas da pasta 'A serem processadas',
+    insere dados na base, registra erros/logs e atualiza controles.
+    """
     # Lê todas as planilhas novas
     df_dados, arquivos_lidos, linhas_invalidas, consultorios_extraidos, erros_consultorios = ler_planilhas_ambulatorio()
     print("\n✅ Dados lidos e limpos:")
-    print(df_dados)
+    print(df_dados if not df_dados.empty else "(vazio)")
 
     if df_dados.empty:
-        print("✅ Nenhum dado foi processado.")
+        print("ℹ️ Nenhum dado foi processado (nada a inserir).")
     else:
         # Carrega base existente e insere novos dados
         df_base = carregar_base_existente()
@@ -1263,15 +1729,38 @@ if __name__ == "__main__":
         processar_log_de_erros()
         atualizar_aba_controle()
 
-    # ✅ Mover arquivos mesmo que não tenham gerado dados
+    # Mover arquivos mesmo se não geraram dados
     if arquivos_lidos:
         mover_arquivos_processados(arquivos_lidos)
     else:
         print("ℹ️ Nenhum arquivo foi marcado para arquivamento.")
 
-    # ⚙️ Inserir dados de consultórios (ambulatorio2) se houver
-    df_consultorios = pd.DataFrame(consultorios_extraidos)
-    if not df_consultorios.empty:
-        inserir_consultorios(df_consultorios)
-        if erros_consultorios:
-            registrar_erros_consultorios(erros_consultorios)
+    # Inserir dados de consultórios (db_ambulatorio2) e espelhar erros
+    if consultorios_extraidos:
+        df_consult = pd.DataFrame(consultorios_extraidos)
+        if not df_consult.empty:
+            inserir_consultorios(df_consult)
+    if erros_consultorios:
+        registrar_erros_consultorios(erros_consultorios)
+
+    print("\n✅ Processamento concluído.\n")
+
+
+# ===============================================================
+# EXECUÇÃO PRINCIPAL DO SCRIPT
+# ===============================================================
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Processa planilhas de Ambulatório.")
+    parser.add_argument("--config", type=str, default=CONFIG_PATH, help="Caminho do arquivo de configuração JSON.")
+    args = parser.parse_args()
+
+    # Ajusta caminho do config e carrega
+    CONFIG_PATH = args.config
+    carregar_config()
+
+    # Inicia o menu principal (fluxo interativo)
+    try:
+        menu_principal()
+    except KeyboardInterrupt:
+        print("\nEncerrado pelo usuário.")
