@@ -46,6 +46,7 @@ from openpyxl import Workbook
 # =========================
 # UI helpers (prompt/menus)
 # =========================
+
 def _line():
     return "─" * 63
 
@@ -93,6 +94,170 @@ def _lista_paginada(opcoes, titulo="Lista", por_pagina=50):
                 return ini + (n - 1)
         print("Opção inválida.")
 
+def _confirmar_mapeamento(orig: str, destino: str) -> str:
+    """
+    Mostra uma confirmação visual do mapeamento.
+    Retorna: 'c' (confirmar), 'v' (voltar e escolher de novo),
+             'l' (enviar pro LOG), 'q' (cancelar).
+    """
+    print()
+    print(_hdr("Confirme a modificação"))
+    print(f"Especialidade original: {_ansi(orig, '1;37')}")
+    print(f"→ Proposta de destino:  {_ansi(destino, '1;36')}\n")
+    print("  [C] Confirmar e continuar")
+    print("  [V] Voltar e escolher novamente")
+    print("  [L] Não mapear agora e enviar para o LOG")
+    print("  [Q] Cancelar (sem ação)")
+
+    while True:
+        esc = _ask("Escolha (C/V/L/Q): ").lower()
+        if esc in ("c", "v", "l", "q"):
+            return esc
+        print("Opção inválida.")
+
+# =========================
+# Helpers de retificação
+# =========================
+
+def _input_motivo_padrao() -> str:
+    """Pergunta e retorna um motivo padronizado para LOG."""
+    print("\nMotivo:")
+    print("  [a] Perguntar para Sara")
+    print("  [b] Rever nos registros anteriores")
+    print("  [c] Solicitar retificação ao hospital")
+    print("  [d] Outros")
+    while True:
+        m = _ask("Escolha (a/b/c/d): ").lower()
+        if m in ("a", "b", "c", "d"):
+            break
+        print("Opção inválida.")
+    if m == "a": return "Perguntar para Sara"
+    if m == "b": return "Rever nos registros anteriores"
+    if m == "c": return "Solicitar retificação ao hospital"
+    outro = _ask("Digite o motivo: ").strip()
+    return outro or "Outros (sem detalhamento)"
+
+
+def _listar_especialidades_log_unicas() -> list[str]:
+    """Lê o log de erros (ambulatorio_log) e retorna a lista única (ordenada) de especialidade_original."""
+    try:
+        df_log = pd.read_excel(CAMINHO_LOGS, sheet_name="ambulatorio_log", engine="openpyxl")
+        if df_log.empty:
+            return []
+    except Exception:
+        return []
+    col = "especialidade_original"
+    if col not in df_log.columns:
+        return []
+    esp = (
+        df_log[col]
+        .astype(str)
+        .fillna("")
+        .map(lambda s: s.strip())
+        .replace("", pd.NA)
+        .dropna()
+        .unique()
+        .tolist()
+    )
+    esp.sort(key=lambda s: unicodedata.normalize('NFKD', s).encode('ASCII', 'ignore').decode('utf-8').lower())
+    return esp
+
+def _atualizar_qualificacao_por_retificacao(ajustes: list[dict]):
+    """
+    Aplica deltas na aba 'Ambulatorio' (Qualificação de Dados.xlsx) por (arquivo, competencia):
+      delta_linhas_logs, delta_linhas_base, delta_soma_logs, delta_soma_base.
+    Se a linha não existir, cria com os deltas (demais campos 0). Recalcula status.
+    """
+    garantir_quali_dados()  # <-- nome novo
+
+    try:
+        dfq = pd.read_excel(CAMINHO_QUALI_DADOS, sheet_name=ABA_QUALI_AMB, engine="openpyxl")
+    except Exception:
+        # estrutura mínima
+        dfq = pd.DataFrame(columns=[
+            "Data_Registro",
+            "arquivo","cnes","nome_hospital","competencia",
+            "linhas_raw","linhas_base","linhas_logs","status_linhas",
+            "soma_raw","soma_base","soma_logs","status_soma"
+        ])
+
+    def _recalcular_status(l_raw, l_base, l_logs, s_raw, s_base, s_logs):
+        if l_logs > 0:
+            status_linhas = "Pendente"
+        elif l_raw == (l_base + l_logs):
+            status_linhas = "OK"
+        elif l_raw > (l_base + l_logs):
+            status_linhas = "Falta linha"
+        else:
+            status_linhas = "Sobrando linha"
+        status_soma = "OK" if s_raw == (s_base + s_logs) else "Divergente"
+        return status_linhas, status_soma
+
+    for a in ajustes:
+        arquivo      = a["arquivo"]
+        competencia  = a["competencia"]
+        cnes         = a.get("cnes", "")
+        nome_hosp    = a.get("nome_hospital", "")
+
+        d_ll = int(a.get("delta_linhas_logs", 0) or 0)
+        d_lb = int(a.get("delta_linhas_base", 0) or 0)
+        d_sl = int(a.get("delta_soma_logs", 0) or 0)
+        d_sb = int(a.get("delta_soma_base", 0) or 0)
+
+        mask = (dfq.get("arquivo")==arquivo) & (dfq.get("competencia")==competencia)
+        if mask.any():
+            idx = dfq[mask].index[0]
+
+            # preenche cnes/nome_hospital se estiverem vazios
+            if not pd.notna(dfq.at[idx, "cnes"]) or str(dfq.at[idx, "cnes"]).strip()=="":
+                dfq.at[idx, "cnes"] = cnes
+            if not pd.notna(dfq.at[idx, "nome_hospital"]) or str(dfq.at[idx, "nome_hospital"]).strip()=="":
+                dfq.at[idx, "nome_hospital"] = nome_hosp
+
+            # aplica deltas
+            for col, delta in (("linhas_logs", d_ll), ("linhas_base", d_lb),
+                               ("soma_logs", d_sl), ("soma_base", d_sb)):
+                try:
+                    dfq.at[idx, col] = int(dfq.at[idx, col]) + delta
+                except Exception:
+                    dfq.at[idx, col] = delta
+
+            # recalcula status
+            l_raw = int(dfq.at[idx, "linhas_raw"] or 0)
+            l_base= int(dfq.at[idx, "linhas_base"] or 0)
+            l_logs= int(dfq.at[idx, "linhas_logs"] or 0)
+            s_raw = int(dfq.at[idx, "soma_raw"] or 0)
+            s_base= int(dfq.at[idx, "soma_base"] or 0)
+            s_logs= int(dfq.at[idx, "soma_logs"] or 0)
+            st_l, st_s = _recalcular_status(l_raw,l_base,l_logs,s_raw,s_base,s_logs)
+            dfq.at[idx,"status_linhas"] = st_l
+            dfq.at[idx,"status_soma"]   = st_s
+
+        else:
+            # cria nova linha com Data_Registro agora
+            novo = {
+                "Data_Registro": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "arquivo": arquivo,
+                "cnes": cnes,
+                "nome_hospital": nome_hosp,
+                "competencia": competencia,
+                "linhas_raw": 0,
+                "linhas_base": d_lb,
+                "linhas_logs": d_ll,
+                "soma_raw": 0,
+                "soma_base": d_sb,
+                "soma_logs": d_sl,
+            }
+            st_l, st_s = _recalcular_status(novo["linhas_raw"],novo["linhas_base"],novo["linhas_logs"],
+                                            novo["soma_raw"],novo["soma_base"],novo["soma_logs"])
+            novo["status_linhas"] = st_l
+            novo["status_soma"]   = st_s
+            dfq = pd.concat([dfq, pd.DataFrame([novo])], ignore_index=True)
+
+    with pd.ExcelWriter(CAMINHO_QUALI_DADOS, engine="openpyxl", mode="a", if_sheet_exists="replace") as w:
+        dfq.to_excel(w, sheet_name=ABA_QUALI_AMB, index=False)
+
+
 # ===============================================================
 # CONFIGURAÇÕES GERAIS E PARÂMETROS
 # ===============================================================
@@ -106,45 +271,79 @@ PRODUCAO_DIR = os.path.abspath(os.path.join(SCRIPT_DIR, os.pardir))
 CONTROLE_DIR = os.path.join(PRODUCAO_DIR, "Controle")
 os.makedirs(CONTROLE_DIR, exist_ok=True)
 
-# Arquivos do Controle
-CAMINHO_CONTROLE_MUDANCAS = os.path.join(CONTROLE_DIR, "Controle de Mudanças.xlsx")
-CAMINHO_QUALIFICACAO_DADOS = os.path.join(CONTROLE_DIR, "Qualificação de Dados.xlsx")
-CAMINHO_CONTROLE_REGISTROS = os.path.join(CONTROLE_DIR, "Controle de Registros.xlsx")  # <- NOVO
-
 # Decisões por hospital+termo (persistidas em JSON)
 # Formato: { cnes_str: { TERMO_UP: {"acao": "M"|"L", "destino": str|None, "motivo": str|None} } }
 decisoes_especialidades = {}
 
-CAMINHO_TEMPLATE_CONTROLE_REM = os.path.join(CONTROLE_DIR, "Controle de Atualização do REM.xlsx")
-CAMINHO_CONTROLE_PRODUCAO    = os.path.join(CONTROLE_DIR, "Controle de Atualização de Produção.xlsx")
+# Arquivo de configuração (mantido ao lado do script)
+CONFIG_PATH = os.path.join(SCRIPT_DIR, "ambulatorio_config.json")
 
-# Aba onde vamos registrar o status de processamento do Ambulatorial
-ABA_STATUS_AMB = "Ambulatorial – Status (Automático)"
+# === ARQUIVOS DE CONTROLE (consolidados/reorganizados) ===
 
-# Pastas de planilhas
+# (NOVO) Só Qualificação (com Data_Registro) — arquivo e aba renomeados
+CAMINHO_QUALI_DADOS = os.path.join(CONTROLE_DIR, "Qualificação de Dados.xlsx")
+ABA_QUALI_AMB = "Ambulatorio"  # antes: "Ambulatorial – Qualificação"
+
+# 2) Grade (formato da tabela por competência, igual ao print)
+CAMINHO_CONTROLE_ATUALIZACAO_GRADE = os.path.join(CONTROLE_DIR, "Controle de Atualização.xlsx")
+ABA_GRADE = "Ambulatorial – Grade"
+
+# 3) Mudanças + Decisões manuais de registro → MESMO ARQUIVO
+CAMINHO_CONTROLE_MUD_REG = os.path.join(CONTROLE_DIR, "Controle de Mudanças e Registros.xlsx")
+ABA_MUD_REG = "Ambulatório"
+
+# 4) Log de erros (especialidades/consultórios não reconhecidos)
+CAMINHO_LOGS = os.path.join(CONTROLE_DIR, "Log de Erros.xlsx")
+
+# === PASTAS DE PLANILHAS ===
 PLANILHAS_DIR = os.path.join(PRODUCAO_DIR, "Planilhas")
 CAMINHO_PLANILHAS = os.path.join(PLANILHAS_DIR, "A serem processadas")
 CAMINHO_ARQUIVADAS = os.path.join(PLANILHAS_DIR, "Processadas")
 
-# Pasta "Bases de Dados" é irmã de "Produção Hospitalar"
-# (ou seja, fica no mesmo nível da pasta “Produção Hospitalar”)
+# === BASE DE DADOS PRINCIPAL ===
+# (arquivo de fato utilizado para receber os dados válidos)
 BASES_DIR = os.path.abspath(os.path.join(PRODUCAO_DIR, os.pardir, "Bases de Dados"))
-
-# Nome do arquivo da base
 NOME_ARQUIVO_BASE = "dbProducao.xlsx"
 CAMINHO_BASE = os.path.join(BASES_DIR, NOME_ARQUIVO_BASE)
+
+# Dicionário hospitalar (referência para CNES)
 CAMINHO_DHOSPITAIS = os.path.join(BASES_DIR, "dHospitais.xlsx")
-# Arquivo de configuração (JSON) ficará ao lado do script, em /Códigos
-CONFIG_PATH = os.path.join(SCRIPT_DIR, "ambulatorio_config.json")
+# --- Helpers para normalização e nome oficial ---
+def _normalizar_cnes(cnes_raw: str) -> str:
+    """Mantém apenas dígitos e preenche à esquerda para 7 dígitos (padrão CNES)."""
+    dig = re.sub(r"\D+", "", str(cnes_raw or "").strip())
+    return dig.zfill(7) if dig else ""
+
+_HOSP_CACHE = None  # cache em memória
+
+def _nome_oficial_por_cnes(cnes_norm: str) -> str | None:
+    """Retorna nome oficial a partir do dHospitais.xlsx (col A=CNES, col D=Nome)."""
+    global _HOSP_CACHE
+    cnes_norm = _normalizar_cnes(cnes_norm)
+    if not cnes_norm:
+        return None
+    try:
+        if _HOSP_CACHE is None:
+            if not os.path.exists(CAMINHO_DHOSPITAIS):
+                return None
+            xls = pd.ExcelFile(CAMINHO_DHOSPITAIS, engine="openpyxl")
+            aba = "hospitais" if "hospitais" in [s.lower() for s in xls.sheet_names] else xls.sheet_names[0]
+            df = pd.read_excel(xls, sheet_name=aba, engine="openpyxl").iloc[:, [0, 3]].copy()
+            df.columns = ["cnes", "nome_hospital"]
+            df["cnes"] = df["cnes"].map(_normalizar_cnes)
+            df["nome_hospital"] = df["nome_hospital"].astype(str).str.strip().str.upper()
+            _HOSP_CACHE = df.set_index("cnes")["nome_hospital"].to_dict()
+        return _HOSP_CACHE.get(cnes_norm)
+    except Exception:
+        return None
 
 # Garante que as pastas existem
 os.makedirs(CAMINHO_PLANILHAS, exist_ok=True)
 os.makedirs(CAMINHO_ARQUIVADAS, exist_ok=True)
 os.makedirs(BASES_DIR, exist_ok=True)
 
-NOME_ABA = "db_ambulatorio"
-NOME_ABA_2 = "db_ambulatorio2"
-CAMINHO_LOGS = os.path.join(BASES_DIR, "base_logs.xlsx")  
+NOME_ABA = "ambulatorioAtendimentos"
+NOME_ABA_2 = "ambulatorioConsultorios"
 
 
 # Lista padrão de especialidades esperadas para matching
@@ -175,7 +374,6 @@ lista_especialidades_ambulatorio = [
     "Fonoaudiologia", 
     "Gastroenterologia", 
     "Geriatria", 
-
     "Hebiatria", 
     "Hebiatria Adolescentes", 
     "Hematologia", 
@@ -204,7 +402,6 @@ lista_especialidades_ambulatorio = [
     "Serviço Social", 
     "Terapia Ocupacional", 
     "Terapia Ocupacional Queimados", 
-    "Traumatologia", 
     "Uroginecologia", 
     "Urologia",
 ]
@@ -222,115 +419,143 @@ termos_proibidos = [
     "TÉCNICO DE ENFERMAGEM"
 ]
 
-# Substituições manuais de nomes de especialidades para padronização
-substituicoes_especialidades = {
-}
+substituicoes_especialidades = {}
+
 # Flags auxiliares de interação
 ULTIMA_RESOLUCAO_TEXTO = None   # preenchida quando usuário escolhe correção manual (M)
 ULTIMO_MOTIVO_ERRO = None       # preenchida quando usuário escolhe mandar pro log (L)
 
-def _criar_controle_producao_vazio():
-    """Cria um arquivo do zero com a aba de status se o template não existir."""
-    cols = [
-        "Data_Registro", "CNES", "Hospital", "Competencia",
-        "Arquivo", "Linhas_RAW", "Linhas_Base", "Linhas_Erros", "Status"
-    ]
-    df_vazio = pd.DataFrame(columns=cols)
-    with pd.ExcelWriter(CAMINHO_CONTROLE_PRODUCAO, engine="openpyxl", mode="w") as w:
-        df_vazio.to_excel(w, sheet_name=ABA_STATUS_AMB, index=False)
-    print(f"📄 Criado '{CAMINHO_CONTROLE_PRODUCAO}' com a aba '{ABA_STATUS_AMB}'.")
-
-def garantir_controle_producao():
-    """
-    Garante que o arquivo 'Controle de Atualização de Produção.xlsx' exista.
-    Se houver o template 'Controle de Atualização do REM.xlsx', copia o template
-    para manter o mesmo formato (abas, estilos etc.) e depois cria/atualiza a
-    aba 'Ambulatorial – Status (Automático)'.
-    """
+def garantir_quali_dados():
+    """Garante o arquivo 'Qualificação de Dados.xlsx' com a aba 'Ambulatorio'."""
     os.makedirs(CONTROLE_DIR, exist_ok=True)
+    precisa_criar = not os.path.exists(CAMINHO_QUALI_DADOS)
+    if precisa_criar:
+        with pd.ExcelWriter(CAMINHO_QUALI_DADOS, engine="openpyxl", mode="w") as w:
+            pd.DataFrame(columns=[
+                "Data_Registro",
+                "arquivo",
+                "cnes",
+                "nome_hospital",
+                "competencia",
+                "linhas_raw",
+                "linhas_base",
+                "linhas_logs",
+                "status_linhas",
+                "soma_raw",
+                "soma_base",
+                "soma_logs",
+                "status_soma"
+            ]).to_excel(w, sheet_name=ABA_QUALI_AMB, index=False)
+        print(f"📄 Criado '{CAMINHO_QUALI_DADOS}' com a aba '{ABA_QUALI_AMB}'.")
 
-    if not os.path.exists(CAMINHO_CONTROLE_PRODUCAO):
-        if os.path.exists(CAMINHO_TEMPLATE_CONTROLE_REM):
-            # Copia o modelo para manter o "mesmo formato"
-            shutil.copy2(CAMINHO_TEMPLATE_CONTROLE_REM, CAMINHO_CONTROLE_PRODUCAO)
-            print(f"📎 Copiado template → '{CAMINHO_CONTROLE_PRODUCAO}'.")
-            # Garante a aba de status (sem apagar nada do template)
+
+def _mm_aaaa(comp_yyyy_mm: str) -> str:
+    # "2025-01" -> "01-2025"
+    try:
+        y, m = comp_yyyy_mm.split("-")
+        return f"{m}-{y}"
+    except Exception:
+        return comp_yyyy_mm
+
+def _garantir_grade_vazia():
+    cols = ["CNES", "Hospital"]  # meses serão adicionados on-demand
+    df = pd.DataFrame(columns=cols)
+    with pd.ExcelWriter(CAMINHO_CONTROLE_ATUALIZACAO_GRADE, engine="openpyxl", mode="w") as w:
+        df.to_excel(w, sheet_name=ABA_GRADE, index=False)
+    print(f"📄 Criado '{CAMINHO_CONTROLE_ATUALIZACAO_GRADE}' com a aba '{ABA_GRADE}'.")
+
+def garantir_controle_atualizacao_grade():
+    os.makedirs(CONTROLE_DIR, exist_ok=True)
+    if not os.path.exists(CAMINHO_CONTROLE_ATUALIZACAO_GRADE):
+        _garantir_grade_vazia()
+    else:
+        # garante que a aba exista
+        try:
+            pd.read_excel(CAMINHO_CONTROLE_ATUALIZACAO_GRADE, sheet_name=ABA_GRADE, engine="openpyxl")
+        except Exception:
+            _garantir_grade_vazia()
+
+def atualizar_controle_atualizacao_grade(*_args, **_kwargs):
+    """
+    Reconstrói a 'Ambulatorial – Grade' com TODOS os hospitais (dHospitais.xlsx)
+    e TODAS as competências encontradas na base db_ambulatorio, marcando:
+      ✅ se há qualquer registro para (CNES, competência)
+      ❌ caso contrário.
+    Ignora parâmetros antigos; agora é uma visão global, no estilo da 'Envio'.
+    """
+    try:
+        # Hospitais (CNES na col A, Nome na col D)
+        if not os.path.exists(CAMINHO_DHOSPITAIS):
+            print(f"⚠️ dHospitais.xlsx não encontrado em: {CAMINHO_DHOSPITAIS}")
+            return
+        xls = pd.ExcelFile(CAMINHO_DHOSPITAIS, engine="openpyxl")
+        aba = "hospitais" if "hospitais" in [s.lower() for s in xls.sheet_names] else xls.sheet_names[0]
+        df_hosp = pd.read_excel(xls, sheet_name=aba, engine="openpyxl").iloc[:, [0, 3]].copy()
+        df_hosp.columns = ["CNES", "Hospital"]
+        df_hosp["CNES"] = df_hosp["CNES"].astype(str).str.strip()
+        df_hosp["Hospital"] = df_hosp["Hospital"].astype(str).str.strip().str.upper()
+
+        # Base de produção (ambulatorio)
+        if not os.path.exists(CAMINHO_BASE):
+            print(f"ℹ️ Base '{CAMINHO_BASE}' não existe ainda; criando grade vazia.")
+            df_out = df_hosp.copy()
+            with pd.ExcelWriter(CAMINHO_CONTROLE_ATUALIZACAO_GRADE, engine="openpyxl",
+                                mode=("a" if os.path.exists(CAMINHO_CONTROLE_ATUALIZACAO_GRADE) else "w"),
+                                if_sheet_exists=("replace" if os.path.exists(CAMINHO_CONTROLE_ATUALIZACAO_GRADE) else None)) as w:
+                df_out.to_excel(w, sheet_name=ABA_GRADE, index=False)
+            return
+
+        df_base = pd.read_excel(CAMINHO_BASE, sheet_name=NOME_ABA, engine="openpyxl")
+        if df_base.empty:
+            df_out = df_hosp.copy()
+            with pd.ExcelWriter(CAMINHO_CONTROLE_ATUALIZACAO_GRADE, engine="openpyxl",
+                                mode=("a" if os.path.exists(CAMINHO_CONTROLE_ATUALIZACAO_GRADE) else "w"),
+                                if_sheet_exists=("replace" if os.path.exists(CAMINHO_CONTROLE_ATUALIZACAO_GRADE) else None)) as w:
+                df_out.to_excel(w, sheet_name=ABA_GRADE, index=False)
+            return
+
+        df_base["cnes"] = df_base["cnes"].astype(str).str.strip()
+        df_base["competencia"] = df_base["competencia"].astype(str).str.strip()
+
+        # Competências únicas, ordenadas (YYYY-MM)
+        comps = sorted(set(df_base["competencia"]), key=lambda s: s if re.match(r"^\d{4}-\d{2}$", s) else f"9999-99")
+        # Colunas MM-YYYY
+        cols_mes = [f"{c.split('-')[1]}-{c.split('-')[0]}" if re.match(r"^\d{4}-\d{2}$", c) else c for c in comps]
+
+        # Monta grade ✅/❌
+        df_out = df_hosp.copy()
+        for comp_iso, col in zip(comps, cols_mes):
+            mask_comp = df_base["competencia"] == comp_iso
+            cnes_ok = set(df_base.loc[mask_comp, "cnes"].astype(str))
+            df_out[col] = ["✅" if str(c) in cnes_ok else "❌" for c in df_out["CNES"].astype(str)]
+
+        # Ordena colunas: CNES, Hospital, depois meses por ano+mês
+        def _key(colname: str):
+            if colname in ("CNES", "Hospital"):
+                return (0, colname)
             try:
-                # Se a aba já existir no template, não recriamos
-                pd.read_excel(CAMINHO_CONTROLE_PRODUCAO, sheet_name=ABA_STATUS_AMB, engine="openpyxl")
+                m, y = colname.split("-")  # "MM-YYYY"
+                return (1, f"{y}{m}")
             except Exception:
-                _criar_controle_producao_vazio()
-        else:
-            # Sem template: cria um arquivo novo e limpo
-            _criar_controle_producao_vazio()
+                return (2, colname)
+
+        df_out = df_out[sorted(df_out.columns, key=_key)]
+
+        with pd.ExcelWriter(CAMINHO_CONTROLE_ATUALIZACAO_GRADE, engine="openpyxl",
+                            mode=("a" if os.path.exists(CAMINHO_CONTROLE_ATUALIZACAO_GRADE) else "w"),
+                            if_sheet_exists=("replace" if os.path.exists(CAMINHO_CONTROLE_ATUALIZACAO_GRADE) else None)) as w:
+            df_out.to_excel(w, sheet_name=ABA_GRADE, index=False)
+
+        print(f"✅ Grade atualizada (estilo ✅/❌) com {len(df_out)} hospitais e {len(cols_mes)} competências.")
+
+    except Exception as e:
+        print(f"❌ Erro ao atualizar grade: {e}")
+
 
 # ===============================================================
 # FUNÇÕES AUXILIARES GERAIS
 # ===============================================================
 
-def registrar_status_ambulatorio_no_controle_producao(cnes: str,
-                                                      nome_hospital: str,
-                                                      competencias_str: str,
-                                                      arquivo: str,
-                                                      linhas_raw: int,
-                                                      linhas_base: int,
-                                                      linhas_erros: int,
-                                                      status: str):
-    """
-    Adiciona/atualiza o status na aba 'Ambulatorial – Status (Automático)' do
-    arquivo 'Controle de Atualização de Produção.xlsx'. Dedup por (CNES, Competencia).
-    """
-    garantir_controle_producao()
-
-    try:
-        try:
-            df_exist = pd.read_excel(CAMINHO_CONTROLE_PRODUCAO, sheet_name=ABA_STATUS_AMB, engine="openpyxl")
-        except ValueError:
-            df_exist = pd.DataFrame()
-        except FileNotFoundError:
-            df_exist = pd.DataFrame()
-
-        competencias = [c.strip() for c in str(competencias_str).split(";") if c.strip()]
-        agora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-        rows = []
-        for comp in competencias:
-            rows.append({
-                "Data_Registro": agora,
-                "CNES": str(cnes).strip(),
-                "Hospital": str(nome_hospital).strip(),
-                "Competencia": comp,
-                "Arquivo": arquivo,
-                "Linhas_RAW": linhas_raw,
-                "Linhas_Base": linhas_base,
-                "Linhas_Erros": linhas_erros,
-                "Status": status
-            })
-        df_new = pd.DataFrame(rows)
-
-        # Dedup por (CNES, Competencia) — remove antigos e mantém os novos
-        if not df_exist.empty and all(col in df_exist.columns for col in ["CNES", "Competencia"]):
-            chave = ["CNES", "Competencia"]
-            # Normalizar CNES como texto antes da comparação
-            df_exist["CNES"] = df_exist["CNES"].astype(str).str.strip()
-            df_new["CNES"] = df_new["CNES"].astype(str).str.strip()
-
-            mask = df_exist.merge(
-                df_new[chave].drop_duplicates(),
-                on=chave,
-                how="left",
-                indicator=True
-            )["_merge"] == "both"
-            df_exist = df_exist[~mask]
-
-        df_out = pd.concat([df_exist, df_new], ignore_index=True)
-
-        with pd.ExcelWriter(CAMINHO_CONTROLE_PRODUCAO, engine="openpyxl", mode="a", if_sheet_exists="replace") as w:
-            df_out.to_excel(w, sheet_name=ABA_STATUS_AMB, index=False)
-
-        print(f"🗂️ Controle atualizado em '{CAMINHO_CONTROLE_PRODUCAO}' (aba '{ABA_STATUS_AMB}').")
-    except Exception as e:
-        print(f"❌ Erro ao atualizar controle de produção: {e}")
 
 def _get_decisao(cnes: str, termo_up: str):
     cnes = str(cnes).strip()
@@ -518,6 +743,7 @@ def _escolher_da_lista_numerada(titulo: str, itens: list[str]) -> str | None:
 # ===============================================================
 # UI: cores ANSI simples (funcionam no PowerShell moderno)
 # ===============================================================
+
 def _ansi(s, code):
     try:
         return f"\033[{code}m{s}\033[0m"
@@ -534,12 +760,27 @@ def _muted(s):   return _ansi(s, "2;37")   # cinza
 # Fluxos de ação do menu
 # ===============================================================
 def executar_retificacao():
-    """Opção 1: Reprocessa o log e tenta inserir o que for corrigível, em seguida atualiza o controle."""
-    print(_title("\n▶ Retificação de dados pendentes"))
-    processar_log_de_erros()
-    atualizar_aba_controle()
-    print(_ok("✔ Retificação concluída.\n"))
-    input(_muted("Pressione Enter para voltar ao menu... "))
+    """
+    Retificação de dados pendentes:
+      - [1] Retificar uma especialidade
+      (novas opções poderão ser adicionadas aqui)
+    """
+    while True:
+        os.system("cls" if os.name == "nt" else "clear")
+        print(_title("┌──────────────────────────────────────────────┐"))
+        print(_title("│ Retificação de dados pendentes              │"))
+        print(_title("└──────────────────────────────────────────────┘"))
+        print("Escolha uma ação:\n")
+        print("  [1] Retificar uma especialidade")
+        print("  [0] Voltar\n")
+        esc = _ask("→ Sua escolha: ").strip()
+        if esc == "0":
+            return
+        if esc == "1":
+            retificar_uma_especialidade()
+        else:
+            print(_warn("Opção inválida."))
+            _pause()
 
 def executar_processamento():
     """Opção 2: Processa planilhas novas com todo o pipeline já existente."""
@@ -680,6 +921,12 @@ def menu_principal():
             input(_muted("Pressione Enter para voltar ao menu... "))
             continue
 
+        # Retificação
+        if escolha == "1":
+            executar_retificacao()
+            input(_muted("\nPressione Enter para voltar ao menu... "))
+            continue
+
         # Processamento
         if escolha == "2":
             executar_processamento()
@@ -707,26 +954,31 @@ def menu_principal():
 
 def registrar_erros_consultorios(erros_consultorios):
     """
-    Registra erros de extração de dados de consultórios na aba 'consultorios_log'
+    Registra erros de consultórios **apenas** no arquivo de logs central:
+      Controle/Log de Erros.xlsx → aba: 'consultorios_log'
     """
-
     if not erros_consultorios:
         return
 
-    print(f"📝 Registrando {len(erros_consultorios)} erros em 'consultorios_log'.")
+    print(f"📝 Registrando {len(erros_consultorios)} erros em 'consultorios_log' (arquivo de LOG).")
 
+    os.makedirs(CONTROLE_DIR, exist_ok=True)
+
+    sheet = "consultorios_log"
     try:
-        df_log_existente = pd.read_excel(CAMINHO_BASE, sheet_name="consultorios_log", engine="openpyxl")
-    except:
-        df_log_existente = pd.DataFrame()
+        df_exist = pd.read_excel(CAMINHO_LOGS, sheet_name=sheet, engine="openpyxl")
+    except Exception:
+        df_exist = pd.DataFrame()
 
-    df_novos_logs = pd.DataFrame(erros_consultorios)
-    df_completo = pd.concat([df_log_existente, df_novos_logs], ignore_index=True)
+    df_new = pd.DataFrame(erros_consultorios)
+    df_out = pd.concat([df_exist, df_new], ignore_index=True)
 
-    with pd.ExcelWriter(CAMINHO_BASE, engine="openpyxl", mode="a", if_sheet_exists="replace") as writer:
-        df_completo.to_excel(writer, sheet_name="consultorios_log", index=False)
+    with pd.ExcelWriter(CAMINHO_LOGS, engine="openpyxl",
+                        mode=("a" if os.path.exists(CAMINHO_LOGS) else "w"),
+                        if_sheet_exists=("replace" if os.path.exists(CAMINHO_LOGS) else None)) as w:
+        df_out.to_excel(w, sheet_name=sheet, index=False)
 
-    print("✅ Log de consultórios atualizado com sucesso.")
+    print("✅ Log de consultórios atualizado em 'Log de Erros.xlsx'.")
 
 def inserir_consultorios(df_consultorios):
     """
@@ -781,16 +1033,16 @@ def extrair_consultorios(df):
 
 def processar_log_de_erros():
     """
-    Reanalisa o log de erros ambulatoriais, tenta corrigir linhas com substituições manuais
-    e insere na base principal caso possível.
+    Reanalisa o log central de erros (Controle/Log de Erros.xlsx → 'ambulatorio_log'),
+    tenta corrigir linhas com substituições manuais e insere na base principal.
     """
     try:
-        df_log = pd.read_excel(CAMINHO_BASE, sheet_name="ambulatorio_log", engine="openpyxl")
+        df_log = pd.read_excel(CAMINHO_LOGS, sheet_name="ambulatorio_log", engine="openpyxl")
         if df_log.empty:
             print("✅ Log de erros está vazio.")
             return
-    except:
-        print("ℹ️ Nenhum log encontrado.")
+    except Exception:
+        print("ℹ️ Nenhum log encontrado em Controle/Log de Erros.xlsx (aba 'ambulatorio_log').")
         return
 
     df_log["especialidade_original"] = df_log["especialidade_original"].astype(str).str.strip().str.upper()
@@ -816,6 +1068,7 @@ def processar_log_de_erros():
             })
         else:
             ainda_invalidos.append(row)
+
     df_para_inserir = pd.DataFrame()
 
     if corrigidos:
@@ -830,13 +1083,198 @@ def processar_log_de_erros():
     else:
         print("ℹ️ Nenhuma linha foi corrigida a partir do log.")
 
-
-    # Atualiza o log
+    # ✅ Atualiza o log (ainda inválidos continuam no LOG CENTRAL)
     df_novo_log = pd.DataFrame(ainda_invalidos)
-    with pd.ExcelWriter(CAMINHO_BASE, engine="openpyxl", mode="a", if_sheet_exists="replace") as writer:
+    with pd.ExcelWriter(CAMINHO_LOGS, engine="openpyxl", mode="a", if_sheet_exists="replace") as writer:
         df_novo_log.to_excel(writer, sheet_name="ambulatorio_log", index=False)
 
     print(f"✅ Log atualizado. {len(corrigidos)} linhas corrigidas, {len(df_para_inserir)} inseridas na base.")
+
+def _retificar_alterar_motivo(esp_escolhida: str):
+    """
+    Atualiza o 'motivo' de TODAS as ocorrências dessa especialidade no LOG.
+    """
+    try:
+        df_log = pd.read_excel(CAMINHO_LOGS, sheet_name="ambulatorio_log", engine="openpyxl")
+    except Exception:
+        print(_warn("Log não encontrado ou sem aba 'ambulatorio_log'."))
+        return
+
+    if df_log.empty:
+        print(_warn("Log vazio."))
+        return
+
+    motivo_novo = _input_motivo_padrao()
+
+    mask = df_log["especialidade_original"].astype(str).str.strip() == esp_escolhida
+    n = int(mask.sum())
+    if n == 0:
+        print(_warn("Nenhuma ocorrência encontrada para essa especialidade no log."))
+        return
+
+    print(_muted(f"{n} ocorrência(s) serão atualizadas com o novo motivo: {motivo_novo}"))
+    conf = _ask("Confirmar? [S/N]: ").lower()
+    if conf != "s":
+        print(_warn("Operação cancelada."))
+        return
+
+    df_log.loc[mask, "motivo"] = motivo_novo
+
+    with pd.ExcelWriter(CAMINHO_LOGS, engine="openpyxl", mode="a", if_sheet_exists="replace") as w:
+        df_log.to_excel(w, sheet_name="ambulatorio_log", index=False)
+
+    print(_ok(f"✔ Motivo atualizado em {n} ocorrência(s)."))
+
+
+def _retificar_alterar_especialidade_e_inserir(esp_escolhida: str):
+    """
+    Move as ocorrências dessa especialidade do LOG para a base,
+    alterando a especialidade (padronizada), deletando somente essas
+    linhas do LOG, registrando em 'Mudanças e Registros' e
+    atualizando 'Ambulatorial – Qualificação'.
+    """
+    try:
+        df_log = pd.read_excel(CAMINHO_LOGS, sheet_name="ambulatorio_log", engine="openpyxl")
+    except Exception:
+        print(_warn("Log não encontrado ou sem aba 'ambulatorio_log'."))
+        return
+    if df_log.empty:
+        print(_warn("Log vazio."))
+        return
+
+    mask = df_log["especialidade_original"].astype(str).str.strip() == esp_escolhida
+    sub = df_log[mask].copy()
+    if sub.empty:
+        print(_warn("Nenhuma ocorrência encontrada para essa especialidade no log."))
+        return
+
+    # Escolher destino (com confirmação visual)
+    print(_title("\n▶ Retificar especialidade"))
+    print(f"Especialidade original: {esp_escolhida}")
+    print("\nComo deseja modificar?")
+    print("  [a] Digitar a especialidade padronizada")
+    print("  [b] Buscar na lista de especialidades")
+    while True:
+        subop = _ask("Escolha (a/b): ").lower()
+        if subop in ("a", "b"):
+            break
+        print("Opção inválida.")
+
+    if subop == "a":
+        destino = _ask("Digite a especialidade padronizada: ").strip()
+        while not destino:
+            destino = _ask("Valor vazio. Digite a especialidade padronizada: ").strip()
+    else:
+        idx = _lista_paginada(lista_especialidades_ambulatorio, "Especialidades – escolha um destino", por_pagina=50)
+        if idx == -1:
+            destino = _ask("Digite a especialidade padronizada: ").strip()
+            while not destino:
+                destino = _ask("Valor vazio. Digite a especialidade padronizada: ").strip()
+        else:
+            destino = lista_especialidades_ambulatorio[idx]
+
+    acao = _confirmar_mapeamento(esp_escolhida, destino)  # 'c', 'v', 'l', 'q'
+    if acao in ("q", "l"):
+        print(_warn("Operação cancelada (Q/L)."))
+        return
+    if acao == "v":
+        print(_warn("Voltando à seleção — reinicie a opção."))
+        return
+
+    # Monta dataframe para inserir na base
+    sub["cnes"] = sub["cnes"].astype(str).str.strip()
+    sub["competencia"] = sub["competencia"].astype(str).str.strip()
+    sub["quantitativo"] = sub["quantitativo"].astype(int)
+
+    df_ins = pd.DataFrame({
+        "cnes": sub["cnes"],
+        "competencia": sub["competencia"],
+        "especialidade_original": sub["especialidade_original"].astype(str),
+        "especialidade": destino,
+        "quantitativo de atendimentos": sub["quantitativo"].astype(int)
+    })
+
+    # Inserir na base (evita duplicatas)
+    df_exist = carregar_base_existente()
+    df_novos = remover_duplicatas(df_ins.copy(), df_exist)
+    inserir_novos_dados(df_novos)
+
+    # Registrar em Mudanças e Registros (uma linha por ocorrência)
+    for _, r in sub.iterrows():
+        cnes = str(r["cnes"]).strip()
+        nome_hosp = _nome_oficial_por_cnes(cnes) or ""
+        registrar_mudancas_e_registros({
+            "data_registro": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "arquivo": r.get("arquivo", ""),
+            "cnes": cnes,
+            "nome_hospital": nome_hosp,
+            "competencia": str(r["competencia"]).strip(),
+            "especialidade_original": str(r["especialidade_original"]),
+            "especialidade_final": destino,
+            "resolucao": "Mudança por retificação"
+        })
+
+    # Atualizar Qualificação de Dados (aba Ambulatorial – Qualificação)
+    # Deltas: saem do LOG (linhas_logs/soma_logs) e entram na BASE (linhas_base/soma_base)
+    ajustes = []
+    grp = sub.groupby(["arquivo","competencia","cnes"], dropna=False, as_index=False).agg(
+        linhas=("quantitativo","size"),
+        soma=("quantitativo","sum")
+    )
+    for _, g in grp.iterrows():
+        cnes = str(g["cnes"]).strip()
+        ajustes.append({
+            "arquivo": g["arquivo"],
+            "competencia": g["competencia"],
+            "cnes": cnes,
+            "nome_hospital": _nome_oficial_por_cnes(cnes) or "",
+            "delta_linhas_logs": -int(g["linhas"]),
+            "delta_linhas_base": +int(g["linhas"]),
+            "delta_soma_logs": -int(g["soma"]),
+            "delta_soma_base": +int(g["soma"]),
+        })
+    if ajustes:
+        _atualizar_qualificacao_por_retificacao(ajustes)
+
+    # Remover APENAS essas ocorrências do LOG
+    df_log_restante = df_log[~mask].copy()
+    with pd.ExcelWriter(CAMINHO_LOGS, engine="openpyxl", mode="a", if_sheet_exists="replace") as w:
+        df_log_restante.to_excel(w, sheet_name="ambulatorio_log", index=False)
+
+    print(_ok(f"✔ Retificação concluída: {len(sub)} ocorrência(s) movidas para a base e removidas do log."))
+
+def retificar_uma_especialidade():
+    """Fluxo: lista únicas do LOG → escolhe 1 → [Alterar motivo] ou [Alterar especialidade e inserir]."""
+    esp_unicas = _listar_especialidades_log_unicas()
+    if not esp_unicas:
+        print(_warn("Nenhuma especialidade pendente no log."))
+        _pause()
+        return
+
+    print(_title("\n▶ Retificar uma especialidade"))
+    escolha = _escolher_da_lista_numerada("Escolha a especialidade para retificar:", esp_unicas)
+    if escolha is None:
+        print(_warn("Operação cancelada (entrada manual não suportada neste fluxo)."))
+        _pause()
+        return
+
+    print(f"\nEspecialidade selecionada: {_ansi(escolha, '1;36')}")
+    print("O que deseja fazer?")
+    print("  [1] Alterar motivo (apenas atualiza a coluna 'motivo' no log)")
+    print("  [2] Alterar especialidade e inserir na base (remove do log)")
+
+    while True:
+        op = _ask("Escolha 1 ou 2: ").strip()
+        if op in ("1","2"):
+            break
+        print("Opção inválida.")
+
+    if op == "1":
+        _retificar_alterar_motivo(escolha)
+    else:
+        _retificar_alterar_especialidade_e_inserir(escolha)
+
+    _pause()
 
 # ===============================================================
 # EXTRAÇÃO E PADRONIZAÇÃO DE INFORMAÇÕES
@@ -860,9 +1298,10 @@ def resolver_especialidade_nao_reconhecida(especialidade_original: str, cnes: st
       1) Envia ao log com um MOTIVO padronizado (ou “outros” com input), OU
       2) Permite MODIFICAR e inserir na base:
          a) digitando a especialidade, OU
-         b) escolhendo da lista de especialidades.
-    Também memoriza a decisão para (CNES, termo) via _set_decisao.
-    Retorna o destino (string) se for para base, ou None se for para log.
+         b) escolhendo da lista de especialidades (com paginação).
+    Agora inclui uma ETAPA DE CONFIRMAÇÃO visual (original → destino) e opção de voltar.
+    Também memoriza a decisão para (CNES, termo) via _set_decisao SOMENTE após confirmar.
+    Retorna o destino (string) se for para base, ou None se for para log/cancelar.
     Define ULTIMA_RESOLUCAO_TEXTO / ULTIMO_MOTIVO_ERRO.
     """
     global ULTIMO_MOTIVO_ERRO, ULTIMA_RESOLUCAO_TEXTO
@@ -870,7 +1309,7 @@ def resolver_especialidade_nao_reconhecida(especialidade_original: str, cnes: st
     termo = str(especialidade_original).strip()
     termo_up = termo.upper()
 
-    # Se já houver decisão memorizada p/ este hospital + termo, aplica:
+    # Decisão memorizada?
     dec = _get_decisao(cnes, termo_up)
     if dec:
         if dec["acao"] == "M" and dec.get("destino"):
@@ -880,7 +1319,7 @@ def resolver_especialidade_nao_reconhecida(especialidade_original: str, cnes: st
             ULTIMO_MOTIVO_ERRO = dec.get("motivo") or "Especialidade não reconhecida (decisão memorizada)"
             return None
 
-    # Menu principal
+    # Menu principal (Log x Modificar)
     print()
     print(_hdr("Especialidade não encontrada"))
     print(f"Entrada: {termo}")
@@ -894,8 +1333,8 @@ def resolver_especialidade_nao_reconhecida(especialidade_original: str, cnes: st
             break
         print("Opção inválida.")
 
+    # ===== Caminho: LOG =====
     if escolha == "1":
-        # Submenu de MOTIVOS:
         print("\nMotivo do LOG:")
         print("  [a] Perguntar para Sara")
         print("  [b] Rever nos registros anteriores")
@@ -913,83 +1352,113 @@ def resolver_especialidade_nao_reconhecida(especialidade_original: str, cnes: st
         elif m == "c":
             motivo = "Solicitar retificação ao hospital"
         else:
-            motivo = _ask("Digite o motivo: ")
-            if not motivo:
-                motivo = "Outros (sem detalhamento)"
+            motivo = _ask("Digite o motivo: ") or "Outros (sem detalhamento)"
 
         ULTIMO_MOTIVO_ERRO = motivo
         ULTIMA_RESOLUCAO_TEXTO = None
-
-        # memoriza decisão “L”
-        _set_decisao(cnes, termo_up, "L", None, motivo)
+        _set_decisao(cnes, termo_up, "L", None, motivo)  # memoriza
         return None
 
-    # escolha == "2"  → modificar e inserir
-    print("\nComo deseja modificar?")
-    print("  [a] Digitar a especialidade padronizada")
-    print("  [b] Buscar na lista de especialidades")
+    # ===== Caminho: MODIFICAR =====
+    # Loop para permitir VOLTAR após visualizar a confirmação
     while True:
-        sub = _ask("Escolha (a/b): ").lower()
-        if sub in ("a", "b"):
-            break
-        print("Opção inválida.")
+        print("\nComo deseja modificar?")
+        print("  [a] Digitar a especialidade padronizada")
+        print("  [b] Buscar na lista de especialidades")
+        while True:
+            sub = _ask("Escolha (a/b): ").lower()
+            if sub in ("a", "b"):
+                break
+            print("Opção inválida.")
 
-    if sub == "a":
-        destino = _ask("Digite a especialidade padronizada: ")
-        while not destino.strip():
-            destino = _ask("Valor vazio. Digite a especialidade padronizada: ")
-    else:
-        idx = _lista_paginada(lista_especialidades_ambulatorio, "Especialidades – escolha um destino", por_pagina=50)
-
-        if idx == -1:
-            destino = _ask("Digite a especialidade padronizada: ")
-            while not destino.strip():
-                destino = _ask("Valor vazio. Digite a especialidade padronizada: ")
+        if sub == "a":
+            destino = _ask("Digite a especialidade padronizada: ").strip()
+            while not destino:
+                destino = _ask("Valor vazio. Digite a especialidade padronizada: ").strip()
         else:
-            destino = lista_especialidades_ambulatorio[idx]
+            idx = _lista_paginada(lista_especialidades_ambulatorio, "Especialidades – escolha um destino", por_pagina=50)
+            if idx == -1:
+                destino = _ask("Digite a especialidade padronizada: ").strip()
+                while not destino:
+                    destino = _ask("Valor vazio. Digite a especialidade padronizada: ").strip()
+            else:
+                destino = lista_especialidades_ambulatorio[idx]
 
-    # “Qual foi a resolução?” (categorias)
-    print("\nQual foi a resolução?")
-    print("  [a] Especialidade não médica que agora é mapeada")
-    print("  [b] Erro gramatical")
-    print("  [c] Nomenclatura diferente com mesmo sentido")
-    print("  [d] Sinalizou setor e não especialidade; ajustado")
-    print("  [e] Ainda não registrado")
-    print("  [f] Nomenclatura mais detalhada que o necessário")
-    print("  [g] Outros")
-    while True:
-        r = _ask("Escolha (a/b/c/d/e/f/g): ").lower()
-        if r in list("abcdefg"):
-            break
-        print("Opção inválida.")
+        # ===== NOVA ETAPA: CONFIRMAÇÃO VISUAL =====
+        acao = _confirmar_mapeamento(termo, destino)  # 'c', 'v', 'l', 'q'
+        if acao == "v":
+            # volta para escolher novamente (reinicia o loop)
+            continue
+        if acao == "l":
+            # envia para LOG (mesmo fluxo do caminho 1)
+            print("\nMotivo do LOG:")
+            print("  [a] Perguntar para Sara")
+            print("  [b] Rever nos registros anteriores")
+            print("  [c] Pedir ao hospital para retificar")
+            print("  [d] Outros")
+            while True:
+                m = _ask("Escolha (a/b/c/d): ").lower()
+                if m in ("a", "b", "c", "d"):
+                    break
+                print("Opção inválida.")
+            if m == "a":
+                motivo = "Perguntar para Sara"
+            elif m == "b":
+                motivo = "Rever nos registros anteriores"
+            elif m == "c":
+                motivo = "Solicitar retificação ao hospital"
+            else:
+                motivo = _ask("Digite o motivo: ") or "Outros (sem detalhamento)"
 
-    if   r == "a": resol = "Especialidade não médica – mapeada"
-    elif r == "b": resol = "Erro gramatical"
-    elif r == "c": resol = "Nomenclatura diferente com mesmo sentido"
-    elif r == "d": resol = "Indicou setor; ajustado para especialidade"
-    elif r == "e": resol = "Ainda não registrado"
-    elif r == "f": resol = "Nomenclatura mais detalhada que o necessário"
-    else:
-        resol = _ask("Descreva a resolução: ")
-        if not resol:
-            resol = "Outros (sem detalhamento)"
+            ULTIMO_MOTIVO_ERRO = motivo
+            ULTIMA_RESOLUCAO_TEXTO = None
+            _set_decisao(cnes, termo_up, "L", None, motivo)  # memoriza
+            return None
+        if acao == "q":
+            # cancela sem ação
+            ULTIMO_MOTIVO_ERRO = "Operação cancelada pelo usuário"
+            ULTIMA_RESOLUCAO_TEXTO = None
+            return None
 
-    # Atualiza estruturas:
-    ULTIMA_RESOLUCAO_TEXTO = resol
-    ULTIMO_MOTIVO_ERRO = None
+        # ===== Confirmado ('c'): perguntar a RESOLUÇÃO e então gravar =====
+        print("\nQual foi a resolução?")
+        print("  [a] Especialidade não médica que agora é mapeada")
+        print("  [b] Erro gramatical")
+        print("  [c] Nomenclatura diferente com mesmo sentido")
+        print("  [d] Sinalizou setor e não especialidade; ajustado")
+        print("  [e] Ainda não registrado")
+        print("  [f] Nomenclatura mais detalhada que o necessário")
+        print("  [g] Outros")
+        while True:
+            r = _ask("Escolha (a/b/c/d/e/f/g): ").lower()
+            if r in list("abcdefg"):
+                break
+            print("Opção inválida.")
 
-    # guarda substituição global (em UPPER como chave de origem)
-    substituicoes_especialidades[termo_up] = destino
-    if destino not in lista_especialidades_ambulatorio:
-        lista_especialidades_ambulatorio.append(destino)
-    salvar_config()
+        if   r == "a": resol = "Especialidade não médica – mapeada"
+        elif r == "b": resol = "Erro gramatical"
+        elif r == "c": resol = "Nomenclatura diferente com mesmo sentido"
+        elif r == "d": resol = "Indicou setor; ajustado para especialidade"
+        elif r == "e": resol = "Ainda não registrado"
+        elif r == "f": resol = "Nomenclatura mais detalhada que o necessário"
+        else:
+            resol = _ask("Descreva a resolução: ") or "Outros (sem detalhamento)"
 
-    # memoriza decisão por hospital+termo
-    _set_decisao(cnes, termo_up, "M", destino, resol)
+        # Só AQUI gravamos substituições e decisão — após confirmação!
+        ULTIMA_RESOLUCAO_TEXTO = resol
+        ULTIMO_MOTIVO_ERRO = None
 
-    print(f"\n✔️ Mapeado '{termo}' → '{destino}'.")
-    return destino
+        # guarda substituição global (em UPPER como chave de origem)
+        substituicoes_especialidades[termo_up] = destino
+        if destino not in lista_especialidades_ambulatorio:
+            lista_especialidades_ambulatorio.append(destino)
+        salvar_config()
 
+        # memoriza decisão por hospital+termo
+        _set_decisao(cnes, termo_up, "M", destino, resol)
+
+        print(f"\n✔️ Mapeado '{termo}' → '{destino}'.")
+        return destino
 
 def padronizar_especialidade(especialidade_original, cnes: str):
     """
@@ -1025,7 +1494,7 @@ def padronizar_especialidade(especialidade_original, cnes: str):
     # 4) Fuzzy “seguro”
     if lista_especialidades_ambulatorio:
         melhor, score = fz.extractOne(termo, lista_especialidades_ambulatorio)
-        if score >= 90:
+        if score >= 95:
             return melhor
 
     # 5) Perguntar (L/M) e memorizar
@@ -1087,6 +1556,7 @@ def buscar_cnes_por_nome(nome_hospital_bruto):
     except Exception as e:
         print(f"❌ Erro ao buscar CNES: {e}")
         return None
+
 
 
 # ===============================================================
@@ -1261,33 +1731,20 @@ def ler_planilhas_ambulatorio():
                 competencias_vistas.add(competencia)
 
                 
-                # Se houve correção manual agora, grava na aba 'registros' e no Controle
+                # Se houve correção manual agora, grava **uma vez** no arquivo unificado de mudanças/registros
                 if ULTIMA_RESOLUCAO_TEXTO:
-                    # 1) Aba 'registros' dentro do CAMINHO_BASE
-                    registrar_resolucao_registro({
+                    registrar_mudancas_e_registros({
                         "data_registro": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                         "arquivo": arquivo,
                         "cnes": cnes,
+                        "nome_hospital": nome_hospital,
                         "competencia": competencia,
                         "especialidade_original": str(especialidade_bruta),
                         "especialidade_final": especialidade_corrigida,
                         "resolucao": ULTIMA_RESOLUCAO_TEXTO
                     })
-
-                    # 2) Arquivo de Controle (Controle/controle_especialidades.xlsx)
-                    registrar_controle_especialidade({
-                        "data_registro": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                        "arquivo": arquivo,
-                        "cnes": cnes,
-                        "nome_hospital": nome_hospital,          # <- usamos o nome extraído do arquivo
-                        "competencia": competencia,
-                        "especialidade_original": str(especialidade_bruta),
-                        "especialidade_final": especialidade_corrigida,
-                        "resolucao": ULTIMA_RESOLUCAO_TEXTO
-                    })
-
-                    # limpa a flag para não registrar mais de uma vez indevidamente
                     ULTIMA_RESOLUCAO_TEXTO = None
+
             # === RESUMO POR ARQUIVO ===
             if competencias_vistas:
                 competencia_resumo = ";".join(sorted(competencias_vistas))
@@ -1320,17 +1777,17 @@ def ler_planilhas_ambulatorio():
             elif linhas_base == 0 and linhas_erros == 0:
                 status = "Sem Dados"
 
-            # 👉 Escreve no novo arquivo "Controle de Atualização de Produção.xlsx"
-            registrar_status_ambulatorio_no_controle_producao(
-                cnes=cnes,
-                nome_hospital=nome_hospital,
-                competencias_str=competencia_resumo,  # ex.: '2025-01;2025-02'
-                arquivo=arquivo,
-                linhas_raw=linhas_raw,
-                linhas_base=linhas_base,
-                linhas_erros=linhas_erros,
-                status=status
-            )
+            
+            # 👉 Atualiza também a grade em colunas por competência (formato do print)
+            try:
+                atualizar_controle_atualizacao_grade(
+                    cnes=cnes,
+                    nome_hospital=nome_hospital,
+                    competencias=sorted(list(competencias_vistas)) if competencias_vistas else [competencia_padrao]
+                )
+            except Exception as e:
+                print(f"❌ Erro ao atualizar grade de controle: {e}")
+
 
             # 👇 estes blocos rodam UMA VEZ por arquivo (fora do for)
             qtd_consultorios = extrair_consultorios(df)
@@ -1459,179 +1916,123 @@ def inserir_novos_dados(df_novos):
 
 def registrar_erros_ambulatorio(linhas_invalidas):
     """
-    Registra as linhas com especialidades não reconhecidas no log 'ambulatorio_log'
-    e espelha em CAMINHO_LOGS.
+    Registra erros **apenas** no arquivo de logs central:
+      Controle/Log de Erros.xlsx → aba: 'ambulatorio_log'
+    (não escreve nada em dbProducao.xlsx)
     """
     if not linhas_invalidas:
         return
 
-    print(f"📝 Registrando {len(linhas_invalidas)} erros em 'ambulatorio_log'.")
+    print(f"📝 Registrando {len(linhas_invalidas)} erros em 'ambulatorio_log' (arquivo de LOG).")
 
-    # 1) Carregar o log existente na base principal
+    os.makedirs(CONTROLE_DIR, exist_ok=True)
+
+    sheet = "ambulatorio_log"
     try:
-        df_log_existente = pd.read_excel(CAMINHO_BASE, sheet_name="ambulatorio_log", engine="openpyxl")
-    except:
-        df_log_existente = pd.DataFrame()
+        df_exist = pd.read_excel(CAMINHO_LOGS, sheet_name=sheet, engine="openpyxl")
+    except Exception:
+        df_exist = pd.DataFrame()
 
-    # 2) Montar novos logs
-    df_novos_logs = pd.DataFrame(linhas_invalidas)
-    df_completo = pd.concat([df_log_existente, df_novos_logs], ignore_index=True)
+    df_new = pd.DataFrame(linhas_invalidas)
+    df_out = pd.concat([df_exist, df_new], ignore_index=True)
 
-    # 3) Salvar na base principal
-    with pd.ExcelWriter(CAMINHO_BASE, engine="openpyxl", mode="a", if_sheet_exists="replace") as writer:
-        df_completo.to_excel(writer, sheet_name="ambulatorio_log", index=False)
-    print("✅ Log de erros atualizado com sucesso.")
+    with pd.ExcelWriter(CAMINHO_LOGS, engine="openpyxl",
+                        mode=("a" if os.path.exists(CAMINHO_LOGS) else "w"),
+                        if_sheet_exists=("replace" if os.path.exists(CAMINHO_LOGS) else None)) as w:
+        df_out.to_excel(w, sheet_name=sheet, index=False)
 
-    # 4) Espelhar no arquivo de logs central
-    # ✅ Espelhar no arquivo de logs central
-    try:
-        if os.path.exists(CAMINHO_LOGS):
-            # Atualiza preservando outras abas
-            df_log_existente2 = pd.read_excel(CAMINHO_LOGS, sheet_name="ambulatorio_log", engine="openpyxl")
-            df_completo2 = pd.concat([df_log_existente2, df_novos_logs], ignore_index=True)
+    print("✅ Log de erros atualizado em 'Log de Erros.xlsx'.")
 
-            with pd.ExcelWriter(CAMINHO_LOGS, engine="openpyxl",
-                                mode="a", if_sheet_exists="replace") as writer:
-                df_completo2.to_excel(writer, sheet_name="ambulatorio_log", index=False)
-
-        else:
-            # Cria o arquivo do zero
-            df_completo2 = pd.DataFrame(df_novos_logs)
-
-            with pd.ExcelWriter(CAMINHO_LOGS, engine="openpyxl",
-                                mode="w") as writer:
-                df_completo2.to_excel(writer, sheet_name="ambulatorio_log", index=False)
-
-
-        print("📚 Log espelhado em 'base_logs.xlsx'.")
-    except Exception as e:
-        print(f"❌ Erro ao espelhar log em CAMINHO_LOGS: {e}")
-
-def registrar_resolucao_registro(registro: dict):
+def registrar_mudancas_e_registros(registro: dict):
     """
-    Salva SOMENTE em:
-      Controle/Controle de Registros.xlsx → aba: 'Registros'
+    Grava todas as decisões manuais (mudanças + registros) em:
+      Controle/Controle de Mudanças e Registros.xlsx → aba: 'Ambulatório'
+    Usa superset de colunas; o que não vier no dict fica vazio.
     """
     try:
         os.makedirs(CONTROLE_DIR, exist_ok=True)
 
-        sheet = "Registros"
-
-        # Lê o que já existe (se existir)
         try:
-            df_exist = pd.read_excel(CAMINHO_CONTROLE_REGISTROS, sheet_name=sheet, engine="openpyxl")
-        except FileNotFoundError:
-            df_exist = pd.DataFrame()
+            df_exist = pd.read_excel(CAMINHO_CONTROLE_MUD_REG, sheet_name=ABA_MUD_REG, engine="openpyxl")
         except Exception:
             df_exist = pd.DataFrame()
 
         df_new = pd.DataFrame([registro])
         df_out = pd.concat([df_exist, df_new], ignore_index=True)
 
-        if os.path.exists(CAMINHO_CONTROLE_REGISTROS):
-            with pd.ExcelWriter(CAMINHO_CONTROLE_REGISTROS, engine="openpyxl",
-                                mode="a", if_sheet_exists="replace") as writer:
-                df_out.to_excel(writer, sheet_name=sheet, index=False)
-        else:
-            with pd.ExcelWriter(CAMINHO_CONTROLE_REGISTROS, engine="openpyxl",
-                                mode="w") as writer:
-                df_out.to_excel(writer, sheet_name=sheet, index=False)
+        with pd.ExcelWriter(CAMINHO_CONTROLE_MUD_REG, engine="openpyxl",
+                            mode=("a" if os.path.exists(CAMINHO_CONTROLE_MUD_REG) else "w"),
+                            if_sheet_exists=("replace" if os.path.exists(CAMINHO_CONTROLE_MUD_REG) else None)) as w:
+            df_out.to_excel(w, sheet_name=ABA_MUD_REG, index=False)
 
-        print("📝 Registro salvo em 'Controle de Registros.xlsx' → aba 'Registros'.")
+        print(f"🗂️ Mudanças/Registros salvos em '{CAMINHO_CONTROLE_MUD_REG}' (aba '{ABA_MUD_REG}').")
     except Exception as e:
-        print(f"❌ Erro ao salvar em 'Controle de Registros.xlsx': {e}")
-
-
-def registrar_controle_especialidade(registro: dict):
-    """
-    Salva o registro de mudança manual em:
-      Controle/Controle de Mudanças.xlsx  → aba: 'Ambulatório'
-    Colunas esperadas no dict:
-      data_registro, arquivo, cnes, nome_hospital, competencia,
-      especialidade_original, especialidade_final, resolucao
-    """
-    try:
-        os.makedirs(CONTROLE_DIR, exist_ok=True)
-
-        # Lê o que já existe (se existir)
-        try:
-            df_exist = pd.read_excel(
-                CAMINHO_CONTROLE_MUDANCAS,
-                sheet_name="Ambulatório",
-                engine="openpyxl"
-            )
-        except FileNotFoundError:
-            df_exist = pd.DataFrame()
-        except Exception as e:
-            print(f"⚠️ Erro ao ler 'Controle de Mudanças' (será recriado): {e}")
-            df_exist = pd.DataFrame()
-
-        df_new = pd.DataFrame([registro])
-        df_out = pd.concat([df_exist, df_new], ignore_index=True)
-
-        # Cria ou atualiza o arquivo/aba
-        if os.path.exists(CAMINHO_CONTROLE_MUDANCAS):
-            with pd.ExcelWriter(CAMINHO_CONTROLE_MUDANCAS, engine="openpyxl", mode="a", if_sheet_exists="replace") as writer:
-                df_out.to_excel(writer, sheet_name="Ambulatório", index=False)
-        else:
-            with pd.ExcelWriter(CAMINHO_CONTROLE_MUDANCAS, engine="openpyxl", mode="w") as writer:
-                df_out.to_excel(writer, sheet_name="Ambulatório", index=False)
-
-        print(f"🗂️ Mudança registrada em '{CAMINHO_CONTROLE_MUDANCAS}' (aba 'Ambulatório').")
-    except Exception as e:
-        print(f"❌ Erro ao salvar em 'Controle de Mudanças': {e}")
+        print(f"❌ Erro ao salvar em 'Controle de Mudanças e Registros': {e}")
 
 def registrar_controle_resumo(resumo: dict):
     """
-    Salva/atualiza o resumo do processamento por arquivo em:
-      Controle/Qualificação de Dados.xlsx  → aba: 'Ambulatório'
-    Colunas esperadas no dict:
-      arquivo, cnes, nome_hospital, competencia,
-      n° de linhas raw, n° de linhas base, n° de linhas erros, diferença linhas,
-      soma dos dados raw, soma dos dados base, soma dos dados erros, diferença soma
+    Grava Qualificação (linhas/somas + 2 status) em:
+      Controle/Qualificação de Dados.xlsx → aba: 'Ambulatorio'
     """
     try:
         os.makedirs(CONTROLE_DIR, exist_ok=True)
+        garantir_quali_dados()
 
-        # Lê o que já existe
         try:
-            df_exist = pd.read_excel(
-                CAMINHO_QUALIFICACAO_DADOS,
-                sheet_name="Ambulatório",
-                engine="openpyxl"
-            )
-        except FileNotFoundError:
-            df_exist = pd.DataFrame()
-        except Exception as e:
-            print(f"⚠️ Erro ao ler 'Qualificação de Dados' (será recriado): {e}")
+            df_exist = pd.read_excel(CAMINHO_QUALI_DADOS, sheet_name=ABA_QUALI_AMB, engine="openpyxl")
+        except Exception:
             df_exist = pd.DataFrame()
 
-        df_new = pd.DataFrame([resumo])
+        raw_linhas  = int(resumo.get("n° de linhas raw", 0) or 0)
+        base_linhas = int(resumo.get("n° de linhas base", 0) or 0)
+        erro_linhas = int(resumo.get("n° de linhas erros", 0) or 0)
 
-        # Se já houver linha desse arquivo+competência, substitui (mantém 1 por par)
-        chave = ["arquivo", "competencia"]
-        # Normalizar CNES e Competência para garantir merge correto
-        df_exist["cnes"] = df_exist["cnes"].astype(str).str.strip()
-        resumo["cnes"] = str(resumo["cnes"]).strip()
+        raw_soma    = int(resumo.get("soma dos dados raw", 0) or 0)
+        base_soma   = int(resumo.get("soma dos dados base", 0) or 0)
+        erro_soma   = int(resumo.get("soma dos dados erros", 0) or 0)
 
-        if not df_exist.empty and all(c in df_exist.columns for c in chave):
-            mask_dup = (df_exist["arquivo"] == resumo["arquivo"]) & (df_exist["competencia"] == resumo["competencia"])
+        if erro_linhas > 0:
+            status_linhas = "Pendente"
+        elif raw_linhas == (base_linhas + erro_linhas):
+            status_linhas = "OK"
+        elif raw_linhas > (base_linhas + erro_linhas):
+            status_linhas = "Falta linha"
+        else:
+            status_linhas = "Sobrando linha"
+
+        status_soma = "OK" if raw_soma == (base_soma + erro_soma) else "Divergente"
+
+        df_new = pd.DataFrame([{
+            "Data_Registro": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "arquivo":       resumo.get("arquivo"),
+            "cnes":          str(resumo.get("cnes", "")).strip(),
+            "nome_hospital": resumo.get("nome_hospital"),
+            "competencia":   resumo.get("competencia"),
+            "linhas_raw":    raw_linhas,
+            "linhas_base":   base_linhas,
+            "linhas_logs":   erro_linhas,
+            "status_linhas": status_linhas,
+            "soma_raw":      raw_soma,
+            "soma_base":     base_soma,
+            "soma_logs":     erro_soma,
+            "status_soma":   status_soma
+        }])
+
+        # Dedup (arquivo, competencia)
+        if not df_exist.empty and all(c in df_exist.columns for c in ["arquivo","competencia"]):
+            mask_dup = (df_exist["arquivo"] == df_new.iloc[0]["arquivo"]) & \
+                       (df_exist["competencia"] == df_new.iloc[0]["competencia"])
             df_exist = df_exist[~mask_dup]
 
         df_out = pd.concat([df_exist, df_new], ignore_index=True)
-        
-        # Cria ou atualiza o arquivo/aba
-        if os.path.exists(CAMINHO_QUALIFICACAO_DADOS):
-            with pd.ExcelWriter(CAMINHO_QUALIFICACAO_DADOS, engine="openpyxl", mode="a", if_sheet_exists="replace") as writer:
-                df_out.to_excel(writer, sheet_name="Ambulatório", index=False)
-        else:
-            with pd.ExcelWriter(CAMINHO_QUALIFICACAO_DADOS, engine="openpyxl", mode="w") as writer:
-                df_out.to_excel(writer, sheet_name="Ambulatório", index=False)
 
-        print(f"📊 Resumo salvo em '{CAMINHO_QUALIFICACAO_DADOS}' (aba 'Ambulatório').")
+        with pd.ExcelWriter(CAMINHO_QUALI_DADOS, engine="openpyxl",
+                            mode="a", if_sheet_exists="replace") as w:
+            df_out.to_excel(w, sheet_name=ABA_QUALI_AMB, index=False)
+
+        print(f"🧪 Qualificação atualizada em '{CAMINHO_QUALI_DADOS}' (aba '{ABA_QUALI_AMB}').")
     except Exception as e:
-        print(f"❌ Erro ao salvar em 'Qualificação de Dados': {e}")
-
+        print(f"❌ Erro ao salvar Qualificação: {e}")
 
 
 def mover_arquivos_processados(lista_arquivos):
@@ -1695,8 +2096,18 @@ def atualizar_aba_controle():
             df_controle[mes] = col_mes
 
         # ✅ Salva na aba controle_ambulatorio
-        with pd.ExcelWriter(CAMINHO_BASE, engine="openpyxl", mode="a", if_sheet_exists="replace") as writer:
-            df_controle.to_excel(writer, sheet_name="controle_ambulatorio", index=False)
+        DESTINO_ENVIO = CAMINHO_CONTROLE_ATUALIZACAO_GRADE  # \\...\\Produção Hospitalar\\Controle\\Controle de Atualização.xlsx
+        NOME_ABA_ENVIO = "Ambulatorial – Envio (6 meses)"    # evita conflito com "Ambulatorial – Grade"
+
+        with pd.ExcelWriter(
+            DESTINO_ENVIO,
+            engine="openpyxl",
+            mode=("a" if os.path.exists(DESTINO_ENVIO) else "w"),
+            if_sheet_exists=("replace" if os.path.exists(DESTINO_ENVIO) else None)
+        ) as writer:
+            df_controle.to_excel(writer, sheet_name=NOME_ABA_ENVIO, index=False)
+
+        print(f"✅ Aba '{NOME_ABA_ENVIO}' atualizada em '{DESTINO_ENVIO}'.")
 
         print("✅ Aba 'controle_ambulatorio' atualizada com sucesso.")
 
@@ -1706,6 +2117,7 @@ def atualizar_aba_controle():
 # ===============================================================
 # EXECUÇÃO PRINCIPAL DO SCRIPT
 # ===============================================================
+
 def executar_processamento():
     """
     Executa o pipeline padrão: lê planilhas da pasta 'A serem processadas',
@@ -1742,9 +2154,12 @@ def executar_processamento():
             inserir_consultorios(df_consult)
     if erros_consultorios:
         registrar_erros_consultorios(erros_consultorios)
-
+    # Reconstrói a grade global (estilo Envio) após todo o processamento
+    try:
+        atualizar_controle_atualizacao_grade()
+    except Exception as e:
+        print(f"❌ Erro ao atualizar grade de controle: {e}")
     print("\n✅ Processamento concluído.\n")
-
 
 # ===============================================================
 # EXECUÇÃO PRINCIPAL DO SCRIPT

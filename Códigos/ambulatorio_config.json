@@ -54,10 +54,19 @@
     "Serviço Social",
     "Terapia Ocupacional",
     "Terapia Ocupacional Queimados",
-    "Traumatologia",
     "Uroginecologia",
     "Urologia",
-    "Ginecologia"
+    "Ginecologia",
+    "Ginecologia e Obstetrícia",
+    "Obstetrícia",
+    "Cardiologia Pediátrica",
+    "Bariátrica",
+    "Odontologia",
+    "Oncologia",
+    "Cirurgia Aparelho Digestivo",
+    "Cirurgia Cardiovascular",
+    "Acupuntura",
+    "Nefrologia"
   ],
   "termos_proibidos": [
     "AUXILIAR DE ENFERMAGEM",
@@ -65,26 +74,766 @@
     "TÉCNICO DE ENFERMAGEM"
   ],
   "substituicoes_especialidades": {
+    "OFTALMOLOGISTA": "Oftalmologia",
+    "ORTOPEDIA PÉ E OMBRO": "Ortopedia",
+    "CARDIOLOGISTA": "Cardiologia",
+    "TRAUMATOLOGIA": "Ortopedia",
+    "CIRURGIA VASCULAS": "Cirurgia Vascular",
+    "NEUROCIRURGIÃO": "Neurocirurgia",
+    "CIRURGIA CABECA E PESCOCO": "Cirurgia de Cabeça e Pescoço",
     "CLINICA GERAL": "Clínica Médica",
+    "ENDOCRINOLOGIA/METABOLOGIA": "Endocrinologia",
     "ENFERMAGEM": "Enfermeiro",
-    "GINECOLOGIA": "Ginecologia"
+    "GINECOLOGIA": "Ginecologia",
+    "GINECOLOGIA/OBSTETRICIA": "Ginecologia e Obstetrícia",
+    "NUTRICIONISTA": "Nutrição",
+    "OBSTETRICIA": "Obstetrícia",
+    "ORTOPEDIA/TRAUMATOLOGIA": "Ortopedia",
+    "ANESTESISTA": "Anestesiologia",
+    "ANESTESIA": "Anestesiologia",
+    "ANESTESISTAS": "Anestesiologia",
+    "GINECOLOGIA E OBSTETRÍCIA - COLPOSCOPIA": "Ginecologia e Obstetrícia",
+    "GINECOLOGIA E OBSTETRÍCIA - HISTEROSCOPIA": "Ginecologia e Obstetrícia",
+    "GINECOLOGIA E OBSTETRÍCIA - PLANEJAMENTO FAMILIAR": "Ginecologia e Obstetrícia",
+    "GINECOLOGIA E OBSTETRÍCIA - PRÉ NATAL DE ALTO RISCO": "Ginecologia e Obstetrícia",
+    "ORTOPEDIA E TRAUMATOLOGIA": "Ortopedia",
+    "CIRURGIA E TRAUMATOLOGIA BUCO MAXILO FACIAIS": "Buco Maxilo Facial",
+    "ENFERMAGEM CLINICA": "Enfermeiro",
+    "GINECOLOGIA / OBSTETRICIA": "Ginecologia e Obstetrícia",
+    "CLÍNICA CIRÚRGICA": "Cirurgia Geral",
+    "CLINICA OBSTÉTRICA": "Obstetrícia",
+    "PROJETO ELETIVAS CLINICA OTORRINOLARINGOLOGIA": "Otorrinolaringologia",
+    "ENDOCRINOLOGIA E METABOLOGIA": "Endocrinologia",
+    "GINECOLOGIA  E OBSTETRICIA - 55": "Ginecologia e Obstetrícia",
+    "GINECOLOGIA OBSTETRICIA - CAF": "Ginecologia e Obstetrícia",
+    "GINECOLOGIA OBSTETRICIA - COLPOSCOPIA": "Ginecologia e Obstetrícia",
+    "GINECOLOGIA OBSTETRICIA - DIU": "Ginecologia e Obstetrícia",
+    "GINECOLOGIA OBSTETRICIA - HISTEROSCOPIA": "Ginecologia e Obstetrícia",
+    "GINECOLOGIA OBSTETRICIA - IMPLANON": "Ginecologia e Obstetrícia",
+    "GINECOLOGIA OBSTETRICIA ? PUERPERIO.": "Ginecologia e Obstetrícia",
+    "NEUROCIRURGIA - GRUPO DE DOR": "Neurocirurgia",
+    "PLANEJAMENTO FAMILIAR": "Ginecologia e Obstetrícia",
+    "PRE NATAL DE ALTO RISCO": "Ginecologia e Obstetrícia",
+    "PSIQUITRIA INTERVENCIONISTA": "Psiquiatria",
+    "CARDIOLOGIA PEDIÁTRICA": "Cardiologia Pediátrica",
+    "ENFERMAGEM NEONATOLÓICA": "Enfermeiro",
+    "ENFERMAGEM NEONATOLÓGICA": "Enfermeiro",
+    "BARIÁTRICA": "Bariátrica",
+    "ODONTOLOGIA": "Odontologia",
+    "UROLOGIA REGULAÇÃO": "Urologia",
+    "VASCULAR": "Cirurgia Vascular",
+    "ONCOLOGIA CLINICA": "Oncologia",
+    "C. MÉDICA": "Clínica Médica",
+    "PNEUMOLOGISTA": "Pneumologia",
+    "HEMATOLOGISTA": "Hematologia",
+    "CIR. APARELHO DIGESTIVO": "Cirurgia Aparelho Digestivo",
+    "CIRURGIÃO GERAL": "Cirurgia Geral",
+    "CIRURGIÃO PLÁSTICO": "Cirurgia Plástica",
+    "CIRURGIÃO TORÁCICO": "Cirurgia Torácica",
+    "GINOECOLOGISTA OBSTETRA": "Ginecologia e Obstetrícia",
+    "MASTOLOGISTA": "Mastologia",
+    "ORTOPEDISTA": "Ortopedia",
+    "COLOPROCTOLOGISTA": "Colproctologia",
+    "UROLOGISTA": "Urologia",
+    "GINECO ( P.S. GO)": "Ginecologia",
+    "FISIOTERAPEUTA GERAL": "Fisioterapia",
+    "PSICOLOGIA HOSPITALAR": "Psicologia",
+    "PRÉ- NATAL DE ALTO RISCO": "Ginecologia e Obstetrícia",
+    "ORTOPEDIA PÓS-OPER.": "Ortopedia",
+    "CIRURGIA CARDIOVASCULAR": "Cirurgia Cardiovascular",
+    "FISIOTERAPIA MOTORA": "Fisioterapia",
+    "GINECOLOGIA - CIRURGIA GINECOLÓGICA": "Cirurgia Ginecológica",
+    "GINECOLOGIA - LAQUEADURA": "Ginecologia",
+    "GINECOLOGIA - UROGINECOLOGIA": "Uroginecologia",
+    "GINECOLOGIA - ENDOMETRIOSE": "Ginecologia",
+    "GINECOLOGIA E OBSTETRÍCIA - VIOLÊNCIA SEXUAL -  MÉDICA": "Ginecologia e Obstetrícia",
+    "PSICOLOGIA - VIOLÊNCIA SEXUAL": "Psicologia",
+    "SERVIÇO SOCIAL - VIOLÊNCIA SEXUAL": "Serviço Social",
+    "OBSTETRÍCIA - PRÉ NATAL DE ALTO RISCO": "Obstetrícia",
+    "PROCESSO TRANSEXUALIZADOR - CIRURGIA HOMEM TRANS": "Cirurgia Homem Trans",
+    "FONOAUDIOLOGIA - ALEITAMENTO MATERNO": "Fonoaudiologia",
+    "FISIOTERAPIA - UROGINECOLÓGICA": "Fisioterapia",
+    "OFTALMOLOGIA PARA RN": "Oftalmologia",
+    "FUNCIONÁRIO - ATENDIMENTO MÉDICO": "Clínica Médica",
+    "FUNCIONÁRIO - ATENDIMENTO PSICOLOGIA": "Psicologia",
+    "PSICOLOGIA - ATENDIMENTO DIVERSO (TRANS, VD)": "Psicologia",
+    "SERVIÇO SOCIAL - ATENDIMENTO DIVERSO (TRANS, VD)": "Serviço Social",
+    "ACUPUNTURA": "Acupuntura",
+    "PNP - RESIDENTES": "Clínica Médica",
+    "NURTRIÇÃO": "Nutrição",
+    "CIRURGIA PEDIATRIA": "Cirurgia Pediátrica",
+    "INFECTOLOGISTA": "Infectologia",
+    "NEFROLOGIA": "Nefrologia",
+    "CIRURGIA GERAL - PEDIATRIA": "Cirurgia Pediátrica",
+    "CIRURGIA PLÁSTICA / FISSURADOS": "Cirurgia Plástica",
+    "ENDOCRINOLOGIA (INCLUI DIABETES)": "Endocrinologia",
+    "GASTRO (INCLUI ALERGIA LEITE DE VACA) ALV": "Gastroenterologia",
+    "HEPATOLOGIA + TELES SAÚDE": "Hepatologia",
+    "ORTOPEDIA - PTC": "Ortopedia",
+    "PNEUMOLOGIA (INCLUI ESPIROMETRIA)": "Pneumologia",
+    "SND": "Nutrição"
   },
   "decisoes_especialidades": {
+    "2077388": {
+      "OFTALMOLOGISTA": {
+        "acao": "M",
+        "destino": "Oftalmologia",
+        "motivo": "Nomenclatura diferente com mesmo sentido"
+      }
+    },
+    "102105": {
+      "ORTOPEDIA PÉ E OMBRO": {
+        "acao": "M",
+        "destino": "Ortopedia",
+        "motivo": "Nomenclatura mais detalhada que o necessário"
+      },
+      "CARDIOLOGISTA": {
+        "acao": "M",
+        "destino": "Cardiologia",
+        "motivo": "Nomenclatura diferente com mesmo sentido"
+      },
+      "TRAUMATOLOGIA": {
+        "acao": "M",
+        "destino": "Ortopedia",
+        "motivo": "Sara confirmou que \"Traumatologia\" se refere a Ortopedia"
+      },
+      "CIRURGIA VASCULAS": {
+        "acao": "M",
+        "destino": "Cirurgia Vascular",
+        "motivo": "Erro gramatical"
+      },
+      "NEUROCIRURGIÃO": {
+        "acao": "M",
+        "destino": "Neurocirurgia",
+        "motivo": "Nomenclatura diferente com mesmo sentido"
+      }
+    },
     "2076896": {
+      "CIRURGIA CABECA E PESCOCO": {
+        "acao": "M",
+        "destino": "Cirurgia de Cabeça e Pescoço",
+        "motivo": "Nomenclatura diferente com mesmo sentido"
+      },
       "CLINICA GERAL": {
         "acao": "M",
         "destino": "Clínica Médica",
         "motivo": "Nomenclatura diferente com mesmo sentido"
       },
+      "ENDOCRINOLOGIA/METABOLOGIA": {
+        "acao": "M",
+        "destino": "Endocrinologia",
+        "motivo": "Nomenclatura mais detalhada que o necessário"
+      },
       "ENFERMAGEM": {
         "acao": "M",
         "destino": "Enfermeiro",
-        "motivo": "Especialidade não médica – mapeada"
+        "motivo": "Nomenclatura diferente com mesmo sentido"
       },
       "GINECOLOGIA": {
         "acao": "M",
         "destino": "Ginecologia",
+        "motivo": "Tirei ginecologia da lista pra teste e agora inseri novamente."
+      },
+      "GINECOLOGIA/OBSTETRICIA": {
+        "acao": "M",
+        "destino": "Ginecologia e Obstetrícia",
+        "motivo": "Inserção pós teste"
+      },
+      "NUTRICIONISTA": {
+        "acao": "M",
+        "destino": "Nutrição",
+        "motivo": "Nomenclatura diferente com mesmo sentido"
+      },
+      "OBSTETRICIA": {
+        "acao": "M",
+        "destino": "Obstetrícia",
+        "motivo": "Inserção pós teste."
+      },
+      "ORTOPEDIA/TRAUMATOLOGIA": {
+        "acao": "M",
+        "destino": "Ortopedia",
+        "motivo": "Nomenclatura diferente com mesmo sentido"
+      },
+      "CIRURGIA CARDIOVASCULAR": {
+        "acao": "M",
+        "destino": "Cirurgia Cardiovascular",
         "motivo": "Ainda não registrado"
+      }
+    },
+    "5420938": {
+      "ANESTESISTA": {
+        "acao": "M",
+        "destino": "Anestesiologia",
+        "motivo": "Nomenclatura diferente com mesmo sentido"
+      }
+    },
+    "9465464": {
+      "ANESTESIA": {
+        "acao": "M",
+        "destino": "Anestesiologia",
+        "motivo": "Nomenclatura diferente com mesmo sentido"
+      }
+    },
+    "2077450": {
+      "ANESTESISTAS": {
+        "acao": "M",
+        "destino": "Anestesiologia",
+        "motivo": "Nomenclatura diferente com mesmo sentido"
+      },
+      "NAN": {
+        "acao": "L",
+        "destino": null,
+        "motivo": "nulo"
+      }
+    },
+    "2786680": {
+      "GINECOLOGIA E OBSTETRÍCIA - COLPOSCOPIA": {
+        "acao": "M",
+        "destino": "Ginecologia e Obstetrícia",
+        "motivo": "Nomenclatura mais detalhada que o necessário"
+      },
+      "GINECOLOGIA E OBSTETRÍCIA - HISTEROSCOPIA": {
+        "acao": "M",
+        "destino": "Ginecologia e Obstetrícia",
+        "motivo": "Nomenclatura mais detalhada que o necessário"
+      },
+      "GINECOLOGIA E OBSTETRÍCIA - PLANEJAMENTO FAMILIAR": {
+        "acao": "M",
+        "destino": "Ginecologia e Obstetrícia",
+        "motivo": "Nomenclatura mais detalhada que o necessário"
+      },
+      "GINECOLOGIA E OBSTETRÍCIA - PRÉ NATAL DE ALTO RISCO": {
+        "acao": "M",
+        "destino": "Ginecologia e Obstetrícia",
+        "motivo": "Nomenclatura mais detalhada que o necessário"
+      },
+      "ORTOPEDIA E TRAUMATOLOGIA": {
+        "acao": "M",
+        "destino": "Ortopedia",
+        "motivo": "Nomenclatura mais detalhada que o necessário"
+      },
+      "CIRURGIA E TRAUMATOLOGIA BUCO MAXILO FACIAIS": {
+        "acao": "M",
+        "destino": "Buco Maxilo Facial",
+        "motivo": "Nomenclatura diferente com mesmo sentido"
+      },
+      "ENFERMAGEM CLINICA": {
+        "acao": "M",
+        "destino": "Enfermeiro",
+        "motivo": "Nomenclatura mais detalhada que o necessário"
+      },
+      "ENDOCRINOLOGIA E METABOLOGIA": {
+        "acao": "M",
+        "destino": "Endocrinologia",
+        "motivo": "Nomenclatura mais detalhada que o necessário"
+      },
+      "GINECOLOGIA  E OBSTETRICIA - 55": {
+        "acao": "M",
+        "destino": "Ginecologia e Obstetrícia",
+        "motivo": "Nomenclatura diferente com mesmo sentido"
+      },
+      "GINECOLOGIA OBSTETRICIA - CAF": {
+        "acao": "M",
+        "destino": "Ginecologia e Obstetrícia",
+        "motivo": "Nomenclatura mais detalhada que o necessário"
+      },
+      "GINECOLOGIA OBSTETRICIA - COLPOSCOPIA": {
+        "acao": "M",
+        "destino": "Ginecologia e Obstetrícia",
+        "motivo": "Nomenclatura mais detalhada que o necessário"
+      },
+      "GINECOLOGIA OBSTETRICIA - DIU": {
+        "acao": "M",
+        "destino": "Ginecologia e Obstetrícia",
+        "motivo": "Nomenclatura mais detalhada que o necessário"
+      },
+      "GINECOLOGIA OBSTETRICIA - HISTEROSCOPIA": {
+        "acao": "M",
+        "destino": "Ginecologia e Obstetrícia",
+        "motivo": "Nomenclatura mais detalhada que o necessário"
+      },
+      "GINECOLOGIA OBSTETRICIA - IMPLANON": {
+        "acao": "M",
+        "destino": "Ginecologia e Obstetrícia",
+        "motivo": "Nomenclatura mais detalhada que o necessário"
+      },
+      "GINECOLOGIA OBSTETRICIA ? PUERPERIO.": {
+        "acao": "M",
+        "destino": "Ginecologia e Obstetrícia",
+        "motivo": "Nomenclatura mais detalhada que o necessário"
+      },
+      "NEUROCIRURGIA - GRUPO DE DOR": {
+        "acao": "M",
+        "destino": "Neurocirurgia",
+        "motivo": "Nomenclatura mais detalhada que o necessário"
+      },
+      "PLANEJAMENTO FAMILIAR": {
+        "acao": "M",
+        "destino": "Ginecologia e Obstetrícia",
+        "motivo": "Encaminhamento Sara"
+      },
+      "PRE NATAL DE ALTO RISCO": {
+        "acao": "M",
+        "destino": "Ginecologia e Obstetrícia",
+        "motivo": "Encaminhamento Sara"
+      },
+      "PSIQUITRIA INTERVENCIONISTA": {
+        "acao": "M",
+        "destino": "Psiquiatria",
+        "motivo": "Nomenclatura mais detalhada que o necessário"
+      },
+      "CONSULTA COM ENFERMEIRO": {
+        "acao": "L",
+        "destino": null,
+        "motivo": "Perguntar para Sara"
+      }
+    },
+    "2081970": {
+      "GINECOLOGIA / OBSTETRICIA": {
+        "acao": "M",
+        "destino": "Ginecologia e Obstetrícia",
+        "motivo": "Nomenclatura diferente com mesmo sentido"
+      },
+      "POSIROLADUA": {
+        "acao": "L",
+        "destino": null,
+        "motivo": "Teste"
+      }
+    },
+    "5718368": {
+      "CLÍNICA CIRÚRGICA": {
+        "acao": "M",
+        "destino": "Cirurgia Geral",
+        "motivo": "Indicou setor; ajustado para especialidade"
+      },
+      "CLINICA OBSTÉTRICA": {
+        "acao": "M",
+        "destino": "Obstetrícia",
+        "motivo": "Indicou setor; ajustado para especialidade"
+      },
+      "PROJETO ELETIVAS CLINICA OTORRINOLARINGOLOGIA": {
+        "acao": "M",
+        "destino": "Otorrinolaringologia",
+        "motivo": "Nomenclatura mais detalhada que o necessário"
+      }
+    },
+    "2082829": {
+      "CARDIOLOGIA PEDIÁTRICA": {
+        "acao": "M",
+        "destino": "Cardiologia Pediátrica",
+        "motivo": "Ainda não registrado"
+      },
+      "ENFERMAGEM NEONATOLÓICA": {
+        "acao": "M",
+        "destino": "Enfermeiro",
+        "motivo": "Nomenclatura mais detalhada que o necessário"
+      },
+      "ENFERMAGEM NEONATOLÓGICA": {
+        "acao": "M",
+        "destino": "Enfermeiro",
+        "motivo": "Nomenclatura mais detalhada que o necessário"
+      }
+    },
+    "7711980": {
+      "BARIÁTRICA": {
+        "acao": "M",
+        "destino": "Bariátrica",
+        "motivo": "Perguntar posteriormente pra Sara ou pesquisar no BI antigo"
+      },
+      "ESTÔMAGO": {
+        "acao": "L",
+        "destino": null,
+        "motivo": "Rever nos registros anteriores"
+      },
+      "EXAME IMAGEM": {
+        "acao": "L",
+        "destino": null,
+        "motivo": "Rever nos registros anteriores"
+      },
+      "GERAL": {
+        "acao": "L",
+        "destino": null,
+        "motivo": "Rever nos registros anteriores"
+      },
+      "HEPATOBILIAR PANCREÁTRICA": {
+        "acao": "L",
+        "destino": null,
+        "motivo": "Rever nos registros anteriores"
+      },
+      "HISTEROSCOPIA": {
+        "acao": "L",
+        "destino": null,
+        "motivo": "Rever nos registros anteriores"
+      },
+      "MATERNO INFANTIL": {
+        "acao": "L",
+        "destino": null,
+        "motivo": "Perguntar para Sara"
+      },
+      "MULTIPROFISSIONAL": {
+        "acao": "L",
+        "destino": null,
+        "motivo": "Perguntar para Sara"
+      },
+      "NÃO INFORMADO": {
+        "acao": "L",
+        "destino": null,
+        "motivo": "Perguntar para Sara"
+      },
+      "ODONTOLOGIA": {
+        "acao": "M",
+        "destino": "Odontologia",
+        "motivo": "Ainda não registrado"
+      },
+      "ONCO TRIAGEM": {
+        "acao": "L",
+        "destino": null,
+        "motivo": "Perguntar para Sara"
+      },
+      "TORÁCICA": {
+        "acao": "L",
+        "destino": null,
+        "motivo": "Rever nos registros anteriores"
+      },
+      "UROLOGIA REGULAÇÃO": {
+        "acao": "M",
+        "destino": "Urologia",
+        "motivo": "Nomenclatura mais detalhada que o necessário"
+      },
+      "VASCULAR": {
+        "acao": "M",
+        "destino": "Cirurgia Vascular",
+        "motivo": "Nomenclatura diferente com mesmo sentido"
+      },
+      "VASCULAR REGULAÇÃO": {
+        "acao": "L",
+        "destino": null,
+        "motivo": "Perguntar para Sara"
+      },
+      "DOR": {
+        "acao": "L",
+        "destino": null,
+        "motivo": "Perguntar para Sara"
+      },
+      "ONCOLOGIA CLINICA": {
+        "acao": "M",
+        "destino": "Oncologia",
+        "motivo": "Nomenclatura mais detalhada que o necessário"
+      },
+      "C. MÉDICA": {
+        "acao": "M",
+        "destino": "Clínica Médica",
+        "motivo": "Nomenclatura diferente com mesmo sentido"
+      },
+      "PNEUMOLOGISTA": {
+        "acao": "M",
+        "destino": "Pneumologia",
+        "motivo": "Nomenclatura diferente com mesmo sentido"
+      },
+      "HEMATOLOGISTA": {
+        "acao": "M",
+        "destino": "Hematologia",
+        "motivo": "Nomenclatura diferente com mesmo sentido"
+      },
+      "CIR. APARELHO DIGESTIVO": {
+        "acao": "M",
+        "destino": "Cirurgia Aparelho Digestivo",
+        "motivo": "Ainda não registrado"
+      },
+      "CIRURGIÃO GERAL": {
+        "acao": "M",
+        "destino": "Cirurgia Geral",
+        "motivo": "Nomenclatura diferente com mesmo sentido"
+      },
+      "CIRURGIÃO PLÁSTICO": {
+        "acao": "M",
+        "destino": "Cirurgia Plástica",
+        "motivo": "Nomenclatura diferente com mesmo sentido"
+      },
+      "CIRURGIÃO TORÁCICO": {
+        "acao": "M",
+        "destino": "Cirurgia Torácica",
+        "motivo": "Nomenclatura diferente com mesmo sentido"
+      },
+      "GINOECOLOGISTA OBSTETRA": {
+        "acao": "M",
+        "destino": "Ginecologia e Obstetrícia",
+        "motivo": "Nomenclatura diferente com mesmo sentido"
+      },
+      "MASTOLOGISTA": {
+        "acao": "M",
+        "destino": "Mastologia",
+        "motivo": "Nomenclatura diferente com mesmo sentido"
+      },
+      "ORTOPEDISTA": {
+        "acao": "M",
+        "destino": "Ortopedia",
+        "motivo": "Nomenclatura diferente com mesmo sentido"
+      },
+      "COLOPROCTOLOGISTA": {
+        "acao": "M",
+        "destino": "Colproctologia",
+        "motivo": "Nomenclatura diferente com mesmo sentido"
+      },
+      "UROLOGISTA": {
+        "acao": "M",
+        "destino": "Urologia",
+        "motivo": "Nomenclatura diferente com mesmo sentido"
+      },
+      "CANCEROLOGISTA CIRURGICO": {
+        "acao": "L",
+        "destino": null,
+        "motivo": "Perguntar para Sara"
+      },
+      "GINECO ( P.S. GO)": {
+        "acao": "M",
+        "destino": "Ginecologia",
+        "motivo": "Nomenclatura diferente com mesmo sentido"
+      },
+      "CIRURGIÃO DENTISTA": {
+        "acao": "L",
+        "destino": null,
+        "motivo": "Perguntar para Sara"
+      },
+      "FISIOTERAPEUTA GERAL": {
+        "acao": "M",
+        "destino": "Fisioterapia",
+        "motivo": "Nomenclatura mais detalhada que o necessário"
+      },
+      "PSICOLOGIA HOSPITALAR": {
+        "acao": "M",
+        "destino": "Psicologia",
+        "motivo": "Nomenclatura mais detalhada que o necessário"
+      }
+    },
+    "3212130": {
+      "PRÉ- NATAL DE ALTO RISCO": {
+        "acao": "M",
+        "destino": "Ginecologia e Obstetrícia",
+        "motivo": "Encaminhamento Sara"
+      },
+      "AVALIAÇÃO PRÉ-ANESTÉSICO": {
+        "acao": "L",
+        "destino": null,
+        "motivo": "Perguntar para Sara"
+      },
+      "ORTOPEDIA PÓS-OPER.": {
+        "acao": "M",
+        "destino": "Ortopedia",
+        "motivo": "Nomenclatura mais detalhada que o necessário"
+      },
+      "AVALIAÇÃO PRÉ CARDIOLOGICA": {
+        "acao": "L",
+        "destino": null,
+        "motivo": "Perguntar para Sara"
+      },
+      "TRIAGEM PARA COLONOSCOPIA": {
+        "acao": "L",
+        "destino": null,
+        "motivo": "Perguntar para Sara"
+      },
+      "CONSULTAS DE ENFERMAGEM": {
+        "acao": "L",
+        "destino": null,
+        "motivo": "Perguntar para Sara"
+      },
+      "NAN": {
+        "acao": "L",
+        "destino": null,
+        "motivo": "nul"
+      }
+    },
+    "2080583": {
+      "FISIOTERAPIA MOTORA": {
+        "acao": "M",
+        "destino": "Fisioterapia",
+        "motivo": "Nomenclatura mais detalhada que o necessário"
+      }
+    },
+    "2079186": {
+      "PNP-RESIDENTES": {
+        "acao": "L",
+        "destino": null,
+        "motivo": "Não entra"
+      },
+      "ACUPUNTURA": {
+        "acao": "M",
+        "destino": "Acupuntura",
+        "motivo": "Ainda não registrado"
+      },
+      "PNP - RESIDENTES": {
+        "acao": "M",
+        "destino": "Clínica Médica",
+        "motivo": "Encaminhamento Sara"
+      },
+      "NURTRIÇÃO": {
+        "acao": "M",
+        "destino": "Nutrição",
+        "motivo": "Erro gramatical"
+      }
+    },
+    "2075717": {
+      "GINECOLOGIA - CIRURGIA GINECOLÓGICA": {
+        "acao": "M",
+        "destino": "Cirurgia Ginecológica",
+        "motivo": "Ver se entra em Ginecologia"
+      },
+      "GINECOLOGIA - LAQUEADURA": {
+        "acao": "M",
+        "destino": "Ginecologia",
+        "motivo": "Nomenclatura mais detalhada que o necessário"
+      },
+      "GINECOLOGIA - UROGINECOLOGIA": {
+        "acao": "M",
+        "destino": "Uroginecologia",
+        "motivo": "Nomenclatura mais detalhada que o necessário"
+      },
+      "GINECOLOGIA - ENDOMETRIOSE": {
+        "acao": "M",
+        "destino": "Ginecologia",
+        "motivo": "Nomenclatura mais detalhada que o necessário"
+      },
+      "GINECOLOGIA E OBSTETRÍCIA - VIOLÊNCIA SEXUAL -  MÉDICA": {
+        "acao": "M",
+        "destino": "Ginecologia e Obstetrícia",
+        "motivo": "Nomenclatura mais detalhada que o necessário"
+      },
+      "PSICOLOGIA - VIOLÊNCIA SEXUAL": {
+        "acao": "M",
+        "destino": "Psicologia",
+        "motivo": "Nomenclatura mais detalhada que o necessário"
+      },
+      "SERVIÇO SOCIAL - VIOLÊNCIA SEXUAL": {
+        "acao": "M",
+        "destino": "Serviço Social",
+        "motivo": "Nomenclatura mais detalhada que o necessário"
+      },
+      "OBSTETRÍCIA - PRÉ NATAL DE ALTO RISCO": {
+        "acao": "M",
+        "destino": "Obstetrícia",
+        "motivo": "Nomenclatura mais detalhada que o necessário"
+      },
+      "PROCESSO TRANSEXUALIZADOR - CIRURGIA HOMEM TRANS": {
+        "acao": "M",
+        "destino": "Cirurgia Homem Trans",
+        "motivo": "Encaminhamento Sara"
+      },
+      "FONOAUDIOLOGIA - ALEITAMENTO MATERNO": {
+        "acao": "M",
+        "destino": "Fonoaudiologia",
+        "motivo": "Nomenclatura mais detalhada que o necessário"
+      },
+      "FISIOTERAPIA - UROGINECOLÓGICA": {
+        "acao": "M",
+        "destino": "Fisioterapia",
+        "motivo": "Nomenclatura mais detalhada que o necessário"
+      },
+      "OFTALMOLOGIA PARA RN": {
+        "acao": "M",
+        "destino": "Oftalmologia",
+        "motivo": "Nomenclatura mais detalhada que o necessário"
+      },
+      "FUNCIONÁRIO - ATENDIMENTO MÉDICO": {
+        "acao": "M",
+        "destino": "Clínica Médica",
+        "motivo": "Não tenho certeza mas tenho uma memória de que é isso"
+      },
+      "FUNCIONÁRIO - ATENDIMENTO PSICOLOGIA": {
+        "acao": "M",
+        "destino": "Psicologia",
+        "motivo": "Não tenho certeza mas creio que seja isso."
+      },
+      "PSICOLOGIA - ATENDIMENTO DIVERSO (TRANS, VD)": {
+        "acao": "M",
+        "destino": "Psicologia",
+        "motivo": "Nomenclatura mais detalhada que o necessário"
+      },
+      "SERVIÇO SOCIAL - ATENDIMENTO DIVERSO (TRANS, VD)": {
+        "acao": "M",
+        "destino": "Serviço Social",
+        "motivo": "Nomenclatura mais detalhada que o necessário"
+      },
+      "ENFERMAGEM (REMOÇÃO DE PONTO, INSTALAÇAO DE PESSÁRIO, ORIENTAÇÃO)": {
+        "acao": "L",
+        "destino": null,
+        "motivo": "Perguntar para Sara"
+      },
+      "ENFERMAGEM - CURATIVO": {
+        "acao": "L",
+        "destino": null,
+        "motivo": "Rever nos registros anteriores"
+      }
+    },
+    "2078325": {
+      "CIRURGIA PEDIATRIA": {
+        "acao": "M",
+        "destino": "Cirurgia Pediátrica",
+        "motivo": "Erro gramatical"
+      },
+      "INFECTOLOGISTA": {
+        "acao": "M",
+        "destino": "Infectologia",
+        "motivo": "Nomenclatura diferente com mesmo sentido"
+      },
+      "NEFROLOGIA": {
+        "acao": "M",
+        "destino": "Nefrologia",
+        "motivo": "Ainda não registrado"
+      },
+      "RETORNO INTERNAÇÃO": {
+        "acao": "L",
+        "destino": null,
+        "motivo": "Perguntar para Sara"
+      },
+      "CIRURGIA GERAL - PEDIATRIA": {
+        "acao": "M",
+        "destino": "Cirurgia Pediátrica",
+        "motivo": "Nomenclatura diferente com mesmo sentido"
+      },
+      "CIRURGIA PLÁSTICA / FISSURADOS": {
+        "acao": "M",
+        "destino": "Cirurgia Plástica",
+        "motivo": "Nomenclatura mais detalhada que o necessário"
+      },
+      "ENDOCRINOLOGIA (INCLUI DIABETES)": {
+        "acao": "M",
+        "destino": "Endocrinologia",
+        "motivo": "Nomenclatura mais detalhada que o necessário"
+      },
+      "GASTRO (INCLUI ALERGIA LEITE DE VACA) ALV": {
+        "acao": "M",
+        "destino": "Gastroenterologia",
+        "motivo": "Nomenclatura mais detalhada que o necessário"
+      },
+      "HEPATOLOGIA + TELES SAÚDE": {
+        "acao": "M",
+        "destino": "Hepatologia",
+        "motivo": "Nomenclatura mais detalhada que o necessário"
+      },
+      "TX - FÍGADO/HEPATO": {
+        "acao": "L",
+        "destino": null,
+        "motivo": "Perguntar para Sara"
+      },
+      "ORTOPEDIA - PTC": {
+        "acao": "M",
+        "destino": "Ortopedia",
+        "motivo": "Nomenclatura mais detalhada que o necessário"
+      },
+      "RETORNO UTI": {
+        "acao": "L",
+        "destino": null,
+        "motivo": "Perguntar para Sara"
+      },
+      "PNEUMOLOGIA (INCLUI ESPIROMETRIA)": {
+        "acao": "M",
+        "destino": "Pneumologia",
+        "motivo": "Nomenclatura mais detalhada que o necessário"
+      },
+      "SND": {
+        "acao": "M",
+        "destino": "Nutrição",
+        "motivo": "Encaminhamento Sara"
       }
     }
   }
